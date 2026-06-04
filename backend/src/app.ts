@@ -11,8 +11,7 @@ app.use(cors({
     credentials: true
 }));
 
-// funcion hello world para probar el servidor
-//✅ Ruta Hello World (NUEVA)
+// Ruta Hello World (NUEVA)
 app.get('/', (req: Request, res: Response) => {
     res.send('hello world');
 });
