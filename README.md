@@ -95,6 +95,16 @@ git clone https://github.com/eduardo1314/Core-Chat.git
 cd Core-Chat
 
 
+## 🗄️ Ver la Base de Datos (Adminer)
+
+Adminer es una herramienta ligera para visualizar la base de datos desde el navegador.
+
+### Iniciar Adminer 
+
+```bash
+cd /var/www/adminer
+php -S localhost:8080 ## Este es un ejemplo puede ser en otro puerto que este libre
+
 ## 🗄️ Base de Datos
 
 ### Requisitos previos
