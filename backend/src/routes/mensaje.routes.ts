@@ -6,4 +6,7 @@ const router = Router();
 router.get('/mensaje', getMensaje);
 router.get('/config', getConfig);
 
+
+router.get("re")
+
 export default router;

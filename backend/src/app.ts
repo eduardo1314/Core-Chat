@@ -3,6 +3,8 @@ import cors from 'cors';
 import config from './config';
 import logger from './utils/logger';
 import mensajeRoutes from './routes/mensaje.routes';
+import authRoutes from './routes/auth.routes';
+
 
 const app: Express = express();
 
@@ -28,6 +30,7 @@ app.get('/', (req: Request, res: Response) => {
 
 // Rutas de la API
 app.use(config.apiPrefix, mensajeRoutes);
+app.use(`${config.apiPrefix}/auth`, authRoutes);  
 
 // 404 handler
 app.use((req: Request, res: Response) => {
