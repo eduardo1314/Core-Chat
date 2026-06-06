@@ -93,3 +93,80 @@
 ```bash
 git clone https://github.com/eduardo1314/Core-Chat.git
 cd Core-Chat
+
+
+## 🗄️ Base de Datos
+
+### Requisitos previos
+- PostgreSQL 16 o superior
+
+### Configuración de la base de datos
+
+1. **Crear usuario y base de datos:**
+\`\`\`bash
+sudo -u postgres psql
+\`\`\`
+
+\`\`\`sql
+CREATE USER corechat_admin WITH PASSWORD 'Ed1234567@@';
+CREATE DATABASE corechat_db OWNER corechat_admin;
+GRANT ALL PRIVILEGES ON DATABASE corechat_db TO corechat_admin;
+\q
+\`\`\`
+
+2. **Crear las tablas:**
+\`\`\`sql
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    avatar_url TEXT,
+    status VARCHAR(20) DEFAULT 'offline',
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS chats (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(100),
+    type VARCHAR(20) DEFAULT 'private',
+    created_by UUID,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS participants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chat_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    role VARCHAR(20) DEFAULT 'member',
+    last_read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    chat_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    content TEXT NOT NULL,
+    type VARCHAR(20) DEFAULT 'text',
+    is_edited BOOLEAN DEFAULT false,
+    is_deleted BOOLEAN DEFAULT false,
+    reply_to UUID,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+\`\`\`
+
+3. **Verificar tablas creadas:**
+\`\`\`bash
+sudo -u postgres psql -d corechat_db -c "\dt"
+\`\`\`
+
+Deberías ver:
+- users
+- chats
+- participants
+- messages

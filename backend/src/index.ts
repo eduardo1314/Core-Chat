@@ -4,16 +4,18 @@ dotenv.config();
 import app from './app';
 import config from './config';
 import logger from './utils/logger';
+import { connectDB } from './database/config';
 
 const PORT = config.port;
 const NODE_ENV = config.nodeEnv;
 
 async function startServer(): Promise<void> {
-
-    
     try {
         logger.info('🚀 Iniciando Core-Chat API...');
         logger.info(`📡 Modo: ${NODE_ENV}`);
+        
+        // Conectar a la base de datos
+        await connectDB();
         
         const server = app.listen(PORT, () => {
             logger.info(`🚀 Servidor corriendo en ${config.appUrl}`);
@@ -25,8 +27,14 @@ async function startServer(): Promise<void> {
         const gracefulShutdown = (signal: string): void => {
             logger.info(`⚠️ Recibido ${signal}. Cerrando servidor...`);
             
-            server.close(() => {
+            server.close(async () => {
                 logger.info('👋 Servidor HTTP cerrado');
+                
+                // Cerrar conexión de base de datos
+                const { sequelize } = await import('./models');
+                await sequelize.close();
+                logger.info('🗄️ Base de datos desconectada');
+                
                 logger.info('✅ Shutdown completado');
                 process.exit(0);
             });
