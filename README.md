@@ -117,12 +117,6 @@ php -S localhost:8080 ## Este es un ejemplo puede ser en otro puerto que este li
 sudo -u postgres psql
 \`\`\`
 
-\`\`\`sql
-CREATE USER corechat_admin WITH PASSWORD 'Ed1234567@@';
-CREATE DATABASE corechat_db OWNER corechat_admin;
-GRANT ALL PRIVILEGES ON DATABASE corechat_db TO corechat_admin;
-\q
-\`\`\`
 
 2. **Crear las tablas:**
 \`\`\`sql
