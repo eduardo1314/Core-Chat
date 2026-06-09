@@ -2,8 +2,10 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import config from './config';
 import logger from './utils/logger';
-import mensajeRoutes from './routes/mensaje.routes';
 import authRoutes from './routes/auth.routes';
+import chatRoutes from './routes/chat.routes';
+import messageRoutes from './routes/message.routes';
+import friendRoutes from './routes/friend.routes';
 
 
 const app: Express = express();
@@ -31,12 +33,14 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Ruta principal
 app.get('/', (req: Request, res: Response) => {
-    res.send('hello world');
+    res.send('hello world, desde el universo de dragon ball');
 });
 
 // Rutas de la API
-app.use(config.apiPrefix, mensajeRoutes);
 app.use(`${config.apiPrefix}/auth`, authRoutes);  
+app.use(`${config.apiPrefix}/chats`, chatRoutes);
+app.use(`${config.apiPrefix}/messages`, messageRoutes);
+app.use(`${config.apiPrefix}/friends`, friendRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
