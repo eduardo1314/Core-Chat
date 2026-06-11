@@ -1,66 +1,42 @@
 import api from './api';
-import { LoginData, RegisterData, AuthResponse } from '../types/auth';
+import { AuthResponse, AuthMeResponse, LoginData, RegisterData } from '../types';
 
-
-class AuthService {
-    private token: string | null = null;
-
-    constructor() {
-        this.token = localStorage.getItem('token');
-        // Configurar el token en el interceptor de axios
-        this.setAuthHeader();
-    }
-
-    private setAuthHeader() {
-        if (this.token) {
-            api.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
-        }
-    }
-
-    async register(data: RegisterData): Promise<AuthResponse> {
+// Registrar usuario
+export async function registerService(data: RegisterData): Promise<AuthResponse> {
+    try {
         const response = await api.post('/auth/register', data);
-        if (response.data.success) {
-            this.setToken(response.data.data.token);
-        }
         return response.data;
-    }
-
-    async login(data: LoginData): Promise<AuthResponse> {
-        const response = await api.post('/auth/login', data);
-        if (response.data.success) {
-            this.setToken(response.data.data.token);
-        }
-        return response.data;
-    }
-
-    async getProfile(): Promise<any> {
-        const response = await api.get('/auth/me');
-        return response.data;
-    }
-
-    logout(): void {
-        this.clearToken();
-    }
-
-    getToken(): string | null {
-        return this.token;
-    }
-
-    isAuthenticated(): boolean {
-        return !!this.token;
-    }
-
-    private setToken(token: string): void {
-        this.token = token;
-        localStorage.setItem('token', token);
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    }
-
-    private clearToken(): void {
-        this.token = null;
-        localStorage.removeItem('token');
-        delete api.defaults.headers.common['Authorization'];
+    } catch (error: any) {
+        throw error.response?.data || { success: false, error: 'Error de conexión' };
     }
 }
 
-export const authService = new AuthService();
+// Iniciar sesión
+export async function loginService(data: LoginData): Promise<AuthResponse> {
+    try {
+        const response = await api.post('/auth/login', data);
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data || { success: false, error: 'Error de conexión' };
+    }
+}
+
+// Obtener perfil (devuelve solo el usuario, sin token)
+export async function getMeService(): Promise<AuthMeResponse> {
+    try {
+        const response = await api.get('/auth/me');
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data || { success: false, error: 'Error de conexión' };
+    }
+}
+
+// Cerrar sesión
+export async function logoutService(): Promise<AuthResponse> {
+    try {
+        const response = await api.post('/auth/logout');
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data || { success: false, error: 'Error de conexión' };
+    }
+}

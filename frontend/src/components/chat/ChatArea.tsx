@@ -32,18 +32,18 @@ const ChatArea: React.FC<ChatAreaProps> = ({ chatId }) => {
 
     if (!chatId) {
         return (
-            <div className="flex-1 flex items-center justify-center bg-gray-50">
+            <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
                 <div className="text-center">
-                    <p className="text-gray-400 text-lg">Selecciona un chat para empezar</p>
+                    <p className="text-gray-400 dark:text-gray-500 text-lg">Selecciona un chat para empezar</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="flex-1 flex flex-col bg-gray-50">
-            <div className="bg-white border-b border-gray-200 p-5">
-                <h2 className="text-lg font-semibold text-gray-800">Conversación</h2>
+        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900">
+            <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-5">
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Conversación</h2>
             </div>
             
             <MessageList messages={messages} />

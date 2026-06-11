@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes';
 import chatRoutes from './routes/chat.routes';
 import messageRoutes from './routes/message.routes';
 import friendRoutes from './routes/friend.routes';
+import cookieParser from 'cookie-parser';
 
 
 const app: Express = express();
@@ -21,6 +22,7 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 app.use(cors(corsOptions));
+app.use(cookieParser());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

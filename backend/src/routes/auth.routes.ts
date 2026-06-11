@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { register, login, getMe } from '../controllers/auth.controller';
+import { register, login, getMe, logout } from '../controllers/auth.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -16,5 +16,6 @@ router.post('/login', login);
 
 // ruta para obtener el perfil del usuario autenticado
 router.get('/me', authenticate, getMe);
+router.post('/logout', authenticate, logout);
 
 export default router;

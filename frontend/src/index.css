@@ -1,3 +1,16 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Para probar que el modo oscuro funciona */
+.dark body {
+    background-color: #1a1a2e !important;
+}
+
+.dark .bg-white {
+    background-color: #1f2937 !important;
+}
+
+.dark .text-gray-800 {
+    color: #f3f4f6 !important;
+}

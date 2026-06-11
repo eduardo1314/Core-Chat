@@ -21,17 +21,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     ]);
 
     return (
-        <div className="w-96 bg-white border-r border-gray-200 flex flex-col h-full">
-            <div className="p-5 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-800">Chats</h2>
+        <div className="w-96 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
+            <div className="p-5 border-b border-gray-200 dark:border-gray-700">
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Chats</h2>
             </div>
             <div className="flex-1 overflow-y-auto">
                 {chats.map(chat => (
                     <div
                         key={chat.id}
                         onClick={() => onSelectChat(chat.id)}
-                        className={`flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer transition border-b border-gray-100 ${
-                            selectedChatId === chat.id ? 'bg-purple-50' : ''
+                        className={`flex items-center gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition border-b border-gray-100 dark:border-gray-700 ${
+                            selectedChatId === chat.id ? 'bg-purple-50 dark:bg-purple-900/30' : ''
                         }`}
                     >
                         <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
@@ -39,10 +39,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="flex justify-between items-baseline">
-                                <h3 className="font-medium text-gray-800">{chat.name}</h3>
-                                <span className="text-xs text-gray-400">{chat.time}</span>
+                                <h3 className="font-medium text-gray-800 dark:text-white">{chat.name}</h3>
+                                <span className="text-xs text-gray-400 dark:text-gray-500">{chat.time}</span>
                             </div>
-                            <p className="text-sm text-gray-500 truncate">{chat.lastMessage}</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{chat.lastMessage}</p>
                         </div>
                     </div>
                 ))}

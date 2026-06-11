@@ -26,11 +26,6 @@ const RegisterPage: React.FC = () => {
             return;
         }
 
-        if (username.length < 3) {
-            setLocalError('El usuario debe tener al menos 3 caracteres');
-            return;
-        }
-
         setLoading(true);
         try {
             await register(username, email, password);
@@ -43,68 +38,66 @@ const RegisterPage: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-500 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-900 to-gray-800">
+            <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl p-8 w-full max-w-md shadow-2xl border border-gray-700">
                 <div className="text-center mb-8">
                     <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-blue-500">
                         Core-Chat
                     </h1>
-                    <p className="text-gray-500 mt-2">Crea tu cuenta gratis</p>
+                    <p className="text-gray-400 mt-2">Crea tu cuenta gratis</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                        <label className="block text-gray-700 font-medium mb-2">Usuario</label>
+                        <label className="block text-gray-300 font-medium mb-2">Usuario</label>
                         <input
                             type="text"
                             placeholder="usuario123"
                             value={username}
                             onChange={(e) => setUsername(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
+                            className="w-full px-4 py-3 border border-gray-600 bg-gray-700/50 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
                             required
-                            minLength={3}
                         />
                     </div>
 
                     <div>
-                        <label className="block text-gray-700 font-medium mb-2">Email</label>
+                        <label className="block text-gray-300 font-medium mb-2">Email</label>
                         <input
                             type="email"
                             placeholder="tu@email.com"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
+                            className="w-full px-4 py-3 border border-gray-600 bg-gray-700/50 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
                             required
                         />
                     </div>
 
                     <div>
-                        <label className="block text-gray-700 font-medium mb-2">Contraseña</label>
+                        <label className="block text-gray-300 font-medium mb-2">Contraseña</label>
                         <input
                             type="password"
                             placeholder="••••••"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
+                            className="w-full px-4 py-3 border border-gray-600 bg-gray-700/50 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
                             required
                         />
-                        <p className="text-xs text-gray-400 mt-1">Mínimo 6 caracteres</p>
                     </div>
 
                     <div>
-                        <label className="block text-gray-700 font-medium mb-2">Confirmar Contraseña</label>
+                        <label className="block text-gray-300 font-medium mb-2">Confirmar Contraseña</label>
                         <input
                             type="password"
                             placeholder="••••••"
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
+                            className="w-full px-4 py-3 border border-gray-600 bg-gray-700/50 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition"
                             required
                         />
                     </div>
 
                     {(localError || error) && (
-                        <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm border border-red-200">
+                        <div className="bg-red-900/30 text-red-400 p-3 rounded-xl text-sm border border-red-800">
                             {localError || error}
                         </div>
                     )}
@@ -118,9 +111,9 @@ const RegisterPage: React.FC = () => {
                     </button>
                 </form>
 
-                <p className="text-center text-gray-600 mt-6">
+                <p className="text-center text-gray-400 mt-6">
                     ¿Ya tienes cuenta?{' '}
-                    <Link to="/login" className="text-purple-600 hover:text-purple-700 font-medium hover:underline">
+                    <Link to="/login" className="text-purple-400 hover:text-purple-300 hover:underline transition">
                         Inicia sesión aquí
                     </Link>
                 </p>

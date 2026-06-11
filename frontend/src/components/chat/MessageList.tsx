@@ -37,7 +37,7 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
             {Object.entries(groupedMessages).map(([date, msgs]) => (
                 <div key={date}>
                     <div className="flex justify-center my-4">
-                        <span className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
+                        <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-3 py-1 rounded-full">
                             {date}
                         </span>
                     </div>
@@ -50,5 +50,5 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
         </div>
     );
 };
-
+ 
 export default MessageList;

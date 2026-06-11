@@ -1,11 +1,12 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { ApiResponse } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 const api: AxiosInstance = axios.create({
     baseURL: API_URL,
     timeout: 30000,
+    withCredentials: true,
     headers: {
         'Content-Type': 'application/json',
     },

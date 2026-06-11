@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ChatLayout from './layouts/ChatLayout';
+import ThemeToggle from './components/common/ThemeToggle';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user, loading } = useAuth();
@@ -58,7 +59,13 @@ function App() {
                     } />
                     <Route path="/chat" element={
                         <ProtectedRoute>
-                            <ChatLayout />
+                            <>
+                                {/* Botón de cambio de tema */}
+                                <div className="fixed top-4 right-[300px] z-50">
+                                    <ThemeToggle />
+                                </div>
+                                <ChatLayout />
+                            </>
                         </ProtectedRoute>
                     } />
                     <Route path="/" element={<Navigate to="/login" replace />} />

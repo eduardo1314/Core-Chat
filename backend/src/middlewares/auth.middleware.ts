@@ -1,10 +1,12 @@
+import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
 export const authenticate = (req: any, res: any, next: any) => {
-    const token = req.headers.authorization?.split(' ')[1];
+    // Obtener token de la cookie
+    const token = req.cookies?.token;
 
     if (!token) {
-        return res.status(401).json({ success: false, error: 'No token provided' });
+        return res.status(401).json({ success: false, error: 'No autorizado' });
     }
 
     try {
@@ -12,6 +14,6 @@ export const authenticate = (req: any, res: any, next: any) => {
         req.user = decoded;
         next();
     } catch (error) {
-        return res.status(401).json({ success: false, error: 'Invalid token' });
+        return res.status(401).json({ success: false, error: 'Token inválido' });
     }
 };
