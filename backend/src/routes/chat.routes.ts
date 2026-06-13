@@ -1,18 +1,30 @@
 import { Router } from 'express';
-import { getChats, createChat, getChatMessages } from '../controllers/chat.controller';
+import { 
+    getChats, 
+    createChat, 
+    getChatMessages,
+    getActiveChats,
+    getArchivedChats,
+    archiveChat,
+    unarchiveChat,
+    getChatById
+} from '../controllers/chat.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 
 const router = Router();
 
 router.use(authenticate);
 
-// Rutas para chats
+// Rutas específicas primero
+router.get('/active', getActiveChats);
+router.get('/archived', getArchivedChats);
+
+// Rutas con parámetros después
 router.get('/', getChats);
-
-// rutas para crear un nuevo chat
 router.post('/', createChat);
-
-// ruta para obtener los mensajes de un chat específico
+router.get('/:chatId', getChatById);
 router.get('/:chatId/messages', getChatMessages);
+router.put('/:chatId/archive', archiveChat);
+router.put('/:chatId/unarchive', unarchiveChat);
 
 export default router;

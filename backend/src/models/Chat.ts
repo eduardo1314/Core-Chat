@@ -8,17 +8,20 @@ interface ChatAttributes {
     created_by: string;
     created_at: Date;
     updated_at: Date;
+ is_archived: boolean; 
 }
 
-interface ChatCreationAttributes extends Optional<ChatAttributes, 'id' | 'created_at' | 'updated_at'> {}
+interface ChatCreationAttributes extends Optional<ChatAttributes, 'id' | 'created_at' | 'updated_at' | 'is_archived' > {}
 
 class Chat extends Model<ChatAttributes, ChatCreationAttributes> implements ChatAttributes {
+    is_archived: boolean;
     public id!: string;
     public name!: string | null;
     public type!: 'private' | 'group';
     public created_by!: string;
     public readonly created_at!: Date;
     public readonly updated_at!: Date;
+
 }
 
 Chat.init(
@@ -45,6 +48,10 @@ Chat.init(
             type: DataTypes.DATE,
             allowNull: false,
             defaultValue: DataTypes.NOW
+        },
+   is_archived: {                    
+            type: DataTypes.BOOLEAN,
+            defaultValue: false,
         },
         updated_at: {
             type: DataTypes.DATE,

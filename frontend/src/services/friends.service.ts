@@ -1,32 +1,5 @@
 import api from './api';
-import { ApiResponse } from '../types';
-
-export interface Friend {
-    id: string;
-    user_id: string;
-    friend_id: string;
-    status: 'pending' | 'accepted' | 'blocked';
-    created_at: string;
-    friend?: {
-        id: string;
-        username: string;
-        email: string;
-        avatar_url: string | null;
-        status: string;
-    };
-}
-
-export interface FriendRequest {
-    id: string;
-    user_id: string;
-    friend_id: string;
-    status: string;
-    friend?: {
-        id: string;
-        username: string;
-        avatar_url: string | null;
-    };
-}
+import { ApiResponse, Friend, FriendRequest } from '../types';
 
 // Obtener lista de amigos
 export async function getFriendsService(): Promise<ApiResponse<Friend[]>> {
@@ -41,7 +14,7 @@ export async function getFriendsService(): Promise<ApiResponse<Friend[]>> {
 // Obtener solicitudes pendientes
 export async function getPendingRequestsService(): Promise<ApiResponse<FriendRequest[]>> {
     try {
-        const response = await api.get('/friends/pending');
+        const response = await api.get('/friends/requests/pending');
         return response.data;
     } catch (error: any) {
         throw error.response?.data || { success: false, error: 'Error de conexión' };
@@ -51,7 +24,7 @@ export async function getPendingRequestsService(): Promise<ApiResponse<FriendReq
 // Obtener solicitudes enviadas
 export async function getSentRequestsService(): Promise<ApiResponse<FriendRequest[]>> {
     try {
-        const response = await api.get('/friends/sent');
+        const response = await api.get('/friends/requests/sent');
         return response.data;
     } catch (error: any) {
         throw error.response?.data || { success: false, error: 'Error de conexión' };

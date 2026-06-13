@@ -8,9 +8,11 @@ interface ParticipantAttributes {
     role: 'admin' | 'member';
     last_read_at: Date;
     joined_at: Date;
+    is_archived: boolean;
+    archived_at: Date | null;
 }
 
-interface ParticipantCreationAttributes extends Optional<ParticipantAttributes, 'id' | 'joined_at'> {}
+interface ParticipantCreationAttributes extends Optional<ParticipantAttributes, 'id' | 'joined_at' | 'is_archived' | 'archived_at'> {}
 
 class Participant extends Model<ParticipantAttributes, ParticipantCreationAttributes> implements ParticipantAttributes {
     public id!: string;
@@ -19,6 +21,8 @@ class Participant extends Model<ParticipantAttributes, ParticipantCreationAttrib
     public role!: 'admin' | 'member';
     public last_read_at!: Date;
     public joined_at!: Date;
+    public is_archived!: boolean;
+    public archived_at!: Date | null;
 }
 
 Participant.init(
@@ -47,6 +51,14 @@ Participant.init(
         joined_at: {
             type: DataTypes.DATE,
             defaultValue: DataTypes.NOW
+        },
+        is_archived: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false
+        },
+        archived_at: {
+            type: DataTypes.DATE,
+            allowNull: true
         }
     },
     {

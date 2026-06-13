@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes';
 import chatRoutes from './routes/chat.routes';
 import messageRoutes from './routes/message.routes';
 import friendRoutes from './routes/friend.routes';
+import userRoutes from './routes/user.routes';
 import cookieParser from 'cookie-parser';
 
 
@@ -43,6 +44,7 @@ app.use(`${config.apiPrefix}/auth`, authRoutes);
 app.use(`${config.apiPrefix}/chats`, chatRoutes);
 app.use(`${config.apiPrefix}/messages`, messageRoutes);
 app.use(`${config.apiPrefix}/friends`, friendRoutes);
+app.use(`${config.apiPrefix}/users`, userRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

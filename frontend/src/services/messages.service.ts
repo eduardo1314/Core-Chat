@@ -1,28 +1,6 @@
 import api from './api';
-import { ApiResponse } from '../types';
+import { ApiResponse, MessagesResponse, Message } from '../types';
 
-export interface Message {
-    id: string;
-    chat_id: string;
-    user_id: string;
-    content: string;
-    type: 'text' | 'image' | 'file';
-    is_edited: boolean;
-    is_deleted: boolean;
-    reply_to: string | null;
-    created_at: string;
-    updated_at: string;
-    sender?: {
-        id: string;
-        username: string;
-        avatar_url: string | null;
-    };
-}
-
-export interface MessagesResponse {
-    messages: Message[];
-    total: number;
-}
 
 // Enviar un mensaje
 export async function sendMessageService(chatId: string, content: string, type?: string, replyTo?: string): Promise<ApiResponse<Message>> {

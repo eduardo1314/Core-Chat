@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { messageService } from '../services/message.service';
 
-
 // función para enviar un mensaje
 export const sendMessage = async (req: any, res: Response) => {
     try {
@@ -23,7 +22,6 @@ export const sendMessage = async (req: any, res: Response) => {
     }
 };
 
-
 // función para obtener los mensajes de un chat específico
 export const getMessages = async (req: any, res: Response) => {
     try {
@@ -41,7 +39,7 @@ export const getMessages = async (req: any, res: Response) => {
     }
 };
 
-//funcion para obtener el conteo de mensajes no leidos
+// función para obtener el conteo de mensajes no leídos
 export const getUnreadCount = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
@@ -72,8 +70,7 @@ export const editMessage = async (req: any, res: Response) => {
     }
 };
 
-
-//funcion oara eliminar un mensaje
+// función para eliminar un mensaje
 export const deleteMessage = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
@@ -89,7 +86,7 @@ export const deleteMessage = async (req: any, res: Response) => {
     }
 };
 
-//funcion para marcar un mensaje como leido
+// función para marcar un mensaje como leído
 export const markAsRead = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;

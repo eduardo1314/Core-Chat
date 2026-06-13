@@ -71,3 +71,92 @@ export interface AuthResponse {
     error?: string;
     message?: string;
 }
+
+// ====================
+// tipos de chats
+// ====================
+export interface Chat {
+    id: string;
+    name: string | null;
+    type: 'private' | 'group';
+    created_by: string;
+    created_at: string;
+    updated_at: string;
+    Users?: any[];
+    Participants?: any[];
+    lastMessage?: {
+        content: string;
+        created_at: string;
+        sender: {
+            id: string;
+            username: string;
+        };
+    };
+}
+
+export interface CreateChatData {
+    type: 'private' | 'group';
+    name?: string;
+    participantIds: string[];
+}
+
+
+
+// ====================
+// Tipos de amigos
+// ====================
+export interface Friend {
+    id: string;
+    user_id: string;
+    friend_id: string;
+    status: 'pending' | 'accepted' | 'blocked';
+    action_user_id: string;
+    created_at: string;
+    updated_at: string;
+    friend?: {
+        id: string;
+        username: string;
+        email: string;
+        avatar_url: string | null;
+        status: string;
+    };
+}
+
+export interface FriendRequest {
+    id: string;
+    user_id: string;
+    friend_id: string;
+    status: string;
+    created_at: string;
+    friend?: {
+        id: string;
+        username: string;
+        avatar_url: string | null;
+    };
+}
+
+// ==================== 
+// Tipos de mensajes
+// ====================
+export interface Message {
+    id: string;
+    chat_id: string;
+    user_id: string;
+    content: string;
+    type: 'text' | 'image' | 'file';
+    is_edited: boolean;
+    is_deleted: boolean;
+    reply_to: string | null;
+    created_at: string;
+    updated_at: string;
+    sender?: {
+        id: string;
+        username: string;
+        avatar_url: string | null;
+    };
+}
+
+export interface MessagesResponse {
+    messages: Message[];
+    total: number;
+}

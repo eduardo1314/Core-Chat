@@ -158,6 +158,8 @@ export class MessageService {
         
         return count;
     }
+
+    
     
     // Función para formatear la respuesta del mensaje
     private formatMessageResponse(message: any): MessageResponse {
@@ -180,5 +182,7 @@ export class MessageService {
         };
     }
 }
+
+
 
 export const messageService = new MessageService();

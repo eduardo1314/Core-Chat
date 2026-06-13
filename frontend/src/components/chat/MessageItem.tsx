@@ -1,14 +1,15 @@
 import React from 'react';
 
-interface Message {
-    id: string;
-    text: string;
-    isMine: boolean;
-    time: string;
-}
-
 interface MessageItemProps {
-    message: Message;
+    message: {
+        id: string;
+        text: string;
+        isMine: boolean;
+        time: string;
+        senderName?: string;
+        isEdited?: boolean;
+        isDeleted?: boolean;
+    };
 }
 
 const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
@@ -17,18 +18,26 @@ const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
             <div
                 className={`max-w-[70%] px-4 py-2 rounded-2xl ${
                     message.isMine
-                        ? 'bg-blue-500 dark:bg-blue-600 text-white rounded-br-none'
+                        ? 'bg-blue-500 text-white dark:bg-blue-600 rounded-br-none'
                         : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 shadow-sm rounded-bl-none'
                 }`}
             >
+                {!message.isMine && message.senderName && (
+                    <p className="text-xs text-blue-500 dark:text-blue-400 font-medium mb-1">
+                        {message.senderName}
+                    </p>
+                )}
                 <p className="text-sm break-words">{message.text}</p>
-                <span
-                    className={`text-xs mt-1 block ${
-                        message.isMine ? 'text-purple-200 dark:text-purple-300' : 'text-gray-400 dark:text-gray-500'
-                    }`}
-                >
-                    {message.time}
-                </span>
+                <div className="flex items-center gap-1 mt-1">
+                    <span className={`text-xs ${message.isMine ? 'text-blue-100' : 'text-gray-400 dark:text-gray-500'}`}>
+                        {message.time}
+                    </span>
+                    {message.isEdited && !message.isDeleted && (
+                        <span className={`text-xs ${message.isMine ? 'text-blue-200' : 'text-gray-400 dark:text-gray-500'}`}>
+                            (editado)
+                        </span>
+                    )}
+                </div>
             </div>
         </div>
     );
