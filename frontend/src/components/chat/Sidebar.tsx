@@ -8,7 +8,8 @@ import { getUnreadCountService, getTotalUnreadCountService } from '../../service
 import FriendMenu from '../common/FriendMenu';
 
 interface SidebarProps {
-    onSelectChat: (chatId: string | null) => void;
+     onSelectChat: (chatId: string | null, chatName?: string) => void;
+    
     selectedChatId: string | null;
 }
 
@@ -46,8 +47,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     const [isCreatingChat, setIsCreatingChat] = useState(false);
     const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set());
     const [customNames, setCustomNames] = useState<Map<string, string>>(new Map());
-    const [unreadCounts, setUnreadCounts] = useState<Map<string, number>>(new Map()); // ✅ NUEVO: conteo de no leídos por chat
-    const [totalUnread, setTotalUnread] = useState(0); // ✅ NUEVO: total de no leídos
+    const [unreadCounts, setUnreadCounts] = useState<Map<string, number>>(new Map()); // conteo de no leídos por chat
+    const [totalUnread, setTotalUnread] = useState(0); //  total de no leídos
     
     // Ref para prevenir clics múltiples
     const [lastChatCreation, setLastChatCreation] = useState<number>(0);
@@ -72,7 +73,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         loadBlocked();
     }, [friends]);
 
-    // ✅ NUEVO: Cargar conteo de no leídos
+    //  Cargar conteo de no leídos
     const loadUnreadCounts = useCallback(async () => {
         try {
             // Obtener total de no leídos
@@ -102,14 +103,14 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         }
     }, [activeChats]);
 
-    // ✅ Cargar no leídos cuando cambian los chats
+    // Cargar no leídos cuando cambian los chats
     useEffect(() => {
         if (activeChats.length > 0) {
             loadUnreadCounts();
         }
     }, [activeChats, loadUnreadCounts]);
 
-    // ✅ CORREGIDO: Buscar en TODOS los chats y prevenir duplicados
+    //  Buscar en TODOS los chats y prevenir duplicados
     const startChat = async (friendId: string, friendName: string) => {
         if (!friendId || isCreatingChat) return;
         
@@ -162,7 +163,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         }
     };
 
-    // ✅ Función para actualizar el nombre del chat
+    //  Función para actualizar el nombre del chat
     const handleEditName = (friendId: string, newName: string) => {
         setCustomNames(prev => new Map(prev).set(friendId, newName));
         const saved = JSON.parse(localStorage.getItem('customFriendNames') || '{}');
@@ -253,7 +254,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         }
     };
 
-    // ✅ Memoizar amigos aceptados
+    // Memoizar amigos aceptados
     const acceptedFriends = useMemo(() => 
         friends.filter(f => f.status === 'accepted'),
         [friends]
@@ -269,7 +270,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         );
     }
 
-    // ✅ Renderizar lista de chats con indicador de no leídos
+    //  Renderizar lista de chats con indicador de no leídos
     const renderChatList = (chats: any[], showArchiveButton = true) => (
         <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {chats.length === 0 ? (
@@ -283,7 +284,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                     let displayName = '';
                     let avatar = '';
                     let avatarBg = '';
-                    const unreadCount = unreadCounts.get(chat.id) || 0; // ✅ Obtener no leídos
+                    const unreadCount = unreadCounts.get(chat.id) || 0; // Obtener no leídos
                     
                     if (chat.type === 'private') {
                         if (chat.Participants && chat.Participants.length > 0) {
@@ -321,17 +322,19 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                             key={chat.id}
                             className="flex items-center justify-between group hover:bg-gray-50 dark:hover:bg-gray-800 transition"
                         >
-                            <div
-                                onClick={() => onSelectChat(chat.id)}
-                                className={`flex items-center gap-3 p-4 flex-1 cursor-pointer ${
-                                    selectedChatId === chat.id ? 'bg-blue-50 dark:bg-blue-900/30' : ''
-                                }`}
-                            >
+                                    <div
+            onClick={() => onSelectChat(chat.id, displayName)}  // ✅ PASAR displayName
+            className={`flex items-center gap-3 p-4 flex-1 cursor-pointer ${
+                selectedChatId === chat.id ? 'bg-blue-50 dark:bg-blue-900/30' : ''
+            }`}
+        >
+
+                                
                                 <div className="relative">
                                     <div className={`w-12 h-12 bg-gradient-to-r ${avatarBg} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md`}>
                                         {avatar === '👤' || avatar === '💬' ? avatar : avatar}
                                     </div>
-                                    {/* ✅ Indicador de no leídos */}
+                                    {/*  Indicador de no leídos */}
                                     {unreadCount > 0 && (
                                         <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
                                             {unreadCount > 9 ? '9+' : unreadCount}
@@ -407,7 +410,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                         }`}
                     >
                         💬 Chats
-                        {/* ✅ Total de no leídos en el tab */}
+                        {/*  Total de no leídos en el tab */}
                         {totalUnread > 0 && (
                             <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
                                 {totalUnread > 9 ? '9+' : totalUnread}
