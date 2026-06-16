@@ -94,7 +94,7 @@ export async function blockUserService(friendId: string): Promise<ApiResponse<Fr
 // Desbloquear usuario
 export async function unblockUserService(friendId: string): Promise<ApiResponse<null>> {
     try {
-        const response = await api.put(`/friends/unblock/${friendId}`);
+        const response = await api.delete(`/friends/unblock/${friendId}`);
         return response.data;
     } catch (error: any) {
         throw error.response?.data || { success: false, error: 'Error de conexión' };

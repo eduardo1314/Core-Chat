@@ -88,7 +88,7 @@ export const createChat = async (req: any, res: Response) => {
         
         const chat = await Chat.create({
             id: chatId,
-            name: type === 'group' ? name : null,
+            name: name || null,
             type,
             created_by: userId,
             is_archived: false
@@ -152,4 +152,20 @@ export const getChatById = async (req: Request, res: Response) => {
         console.error(error);
         res.status(500).json({ success: false, error: 'Error getting chat' });
     }
+};
+
+    // Eliminar un chat
+export const deleteChat = async (req: any, res: Response) => {
+    try {
+        const userId = req.user.id;
+        const { chatId } = req.params;
+        
+        await chatService.deleteChat(chatId, userId);
+        
+        res.json({ success: true, message: 'Chat eliminado correctamente' });
+    } catch (error: any) {
+        console.error('Delete chat error:', error);
+        res.status(400).json({ success: false, error: error.message });
+    }
+
 };

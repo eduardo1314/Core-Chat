@@ -128,15 +128,16 @@ export class FriendService {
         });
     }
     
-    async getFriends(userId: string): Promise<FriendResponse[]> {
-        const friends = await Friend.findAll({
-            where: {
-                [Op.or]: [
-                    { user_id: userId, status: 'accepted' },
-                    { friend_id: userId, status: 'accepted' }
-                ]
-            }
-        });
+ // funciones para obtener amigos, solicitudes pendientes, solicitudes enviadas, verificar estado de amistad y obtener sugerencias de amigos
+   async getFriends(userId: string): Promise<FriendResponse[]> {
+    const friends = await Friend.findAll({
+        where: {
+            [Op.or]: [
+                { user_id: userId, status: ['accepted', 'blocked'] },
+                { friend_id: userId, status: ['accepted', 'blocked'] }
+            ]
+        }
+    });
         
         const result: FriendResponse[] = [];
         

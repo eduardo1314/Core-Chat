@@ -1,41 +1,71 @@
+// src/services/message.service.ts
 import { Message, Chat, Participant, User } from '../models';
 import { v4 as uuidv4 } from 'uuid';
 import { Op } from 'sequelize';
 import { SendMessageData, MessageResponse } from '../types/core';
 
-
+//  Configuración
+const PAGE_SIZE = 30;
 
 export class MessageService {
-    // Función para enviar un mensaje
+    
+    // ============================================
+    // 1. ENVIAR MENSAJE
+    // ============================================
     async sendMessage(data: SendMessageData): Promise<MessageResponse> {
-        // Verificar que el usuario es participante del chat
+        //  Validar contenido
+        if (!data.content || data.content.trim().length === 0) {
+            throw new Error('El mensaje no puede estar vacío');
+        }
+
+        //  Verificar participación
         const participant = await Participant.findOne({
-            where: { chat_id: data.chatId, user_id: data.userId }
+            where: { 
+                chat_id: data.chatId, 
+                user_id: data.userId
+            }
         });
         
         if (!participant) {
             throw new Error('No eres participante de este chat');
         }
-        
-        // Crear el mensaje
-        const message = await Message.create({
+
+        //  Crear mensaje (sin metadata ni is_read si no existen)
+        const messageData: any = {
             id: uuidv4(),
             chat_id: data.chatId,
             user_id: data.userId,
-            content: data.content,
+            content: data.content.trim(),
             type: data.type || 'text',
             reply_to: data.replyTo || null,
             is_edited: false,
             is_deleted: false
-        });
+        };
         
-        // Actualizar la fecha del chat (para ordenar por último mensaje)
+        // Solo agregar is_read si existe en el modelo
+        // Si tu modelo no tiene is_read, comenta esta línea
+        // messageData.is_read = false;
+        
+        const message = await Message.create(messageData);
+        
+        //  Actualizar fecha del chat
         await Chat.update(
             { updated_at: new Date() },
             { where: { id: data.chatId } }
         );
         
-        // Obtener el mensaje con datos del usuario
+        //  Actualizar last_read_at del participante (si existe el campo)
+        try {
+            await Participant.update(
+                { last_read_at: new Date() },
+                { where: { chat_id: data.chatId, user_id: data.userId } }
+            );
+        } catch (error) {
+            // Si no existe el campo, ignorar
+            console.log('⚠️ last_read_at no existe en Participant');
+        }
+        
+        // Obtener mensaje completo
         const fullMessage = await Message.findByPk(message.id, {
             include: [
                 { 
@@ -48,9 +78,16 @@ export class MessageService {
         return this.formatMessageResponse(fullMessage!);
     }
     
-    // Función para obtener mensajes de un chat
-    async getMessages(chatId: string, userId: string, limit = 50, offset = 0): Promise<{ messages: MessageResponse[], total: number }> {
-        // Verificar que el usuario es participante
+    // ============================================
+    // 2. OBTENER MENSAJES (CON PAGINACIÓN)
+    // ============================================
+    async getMessages(
+        chatId: string, 
+        userId: string, 
+        limit: number = PAGE_SIZE, 
+        offset: number = 0
+    ): Promise<{ messages: MessageResponse[], total: number, hasMore: boolean }> {
+        //  Verificar acceso
         const participant = await Participant.findOne({
             where: { chat_id: chatId, user_id: userId }
         });
@@ -59,9 +96,12 @@ export class MessageService {
             throw new Error('No tienes acceso a este chat');
         }
         
-        // Obtener mensajes
+        //  Obtener de BD
         const { count, rows } = await Message.findAndCountAll({
-            where: { chat_id: chatId, is_deleted: false },
+            where: { 
+                chat_id: chatId, 
+                is_deleted: false 
+            },
             include: [
                 { 
                     model: User, 
@@ -74,24 +114,83 @@ export class MessageService {
         });
         
         const messages = rows.map(msg => this.formatMessageResponse(msg));
+        const result = messages.reverse();
         
-        return { messages: messages.reverse(), total: count };
+        return { 
+            messages: result, 
+            total: count,
+            hasMore: result.length === limit && result.length > 0
+        };
+    }
+
+    // ============================================
+    // 3. OBTENER ÚLTIMOS MENSAJES (CARGA INICIAL)
+    // ============================================
+    async getLatestMessages(
+        chatId: string, 
+        userId: string, 
+        limit: number = 20
+    ): Promise<MessageResponse[]> {
+        //  Verificar acceso
+        const participant = await Participant.findOne({
+            where: { chat_id: chatId, user_id: userId }
+        });
+
+        if (!participant) {
+            throw new Error('No tienes acceso a este chat');
+        }
+
+        //  Obtener de BD
+        const messages = await Message.findAll({
+            where: {
+                chat_id: chatId,
+                is_deleted: false,
+            },
+            include: [
+                {
+                    model: User,
+                    attributes: ['id', 'username', 'avatar_url']
+                }
+            ],
+            order: [['created_at', 'DESC']],
+            limit,
+        });
+
+        return messages.reverse().map(msg => this.formatMessageResponse(msg));
     }
     
-    //funcion para editar un mensaje
+    // ============================================
+    // 4. EDITAR MENSAJE
+    // ============================================
     async editMessage(messageId: string, userId: string, newContent: string): Promise<MessageResponse> {
+        if (!newContent || newContent.trim().length === 0) {
+            throw new Error('El contenido no puede estar vacío');
+        }
+
         const message = await Message.findByPk(messageId);
         
         if (!message) {
             throw new Error('Mensaje no encontrado');
         }
         
+        if (message.is_deleted) {
+            throw new Error('No puedes editar un mensaje eliminado');
+        }
+        
         if (message.user_id !== userId) {
             throw new Error('No puedes editar mensajes de otro usuario');
         }
+
+        //  Límite de tiempo para editar (5 minutos)
+        const timeSinceCreation = Date.now() - new Date(message.created_at).getTime();
+        const MAX_EDIT_TIME = 5 * 60 * 1000;
+        
+        if (timeSinceCreation > MAX_EDIT_TIME) {
+            throw new Error('Solo puedes editar mensajes de los últimos 5 minutos');
+        }
         
         await message.update({
-            content: newContent,
+            content: newContent.trim(),
             is_edited: true,
             updated_at: new Date()
         });
@@ -108,7 +207,9 @@ export class MessageService {
         return this.formatMessageResponse(updatedMessage!);
     }
     
-    //funcion para eliminar un mensaje
+    // ============================================
+    // 5. ELIMINAR MENSAJE
+    // ============================================
     async deleteMessage(messageId: string, userId: string, isAdmin = false): Promise<void> {
         const message = await Message.findByPk(messageId);
         
@@ -116,9 +217,21 @@ export class MessageService {
             throw new Error('Mensaje no encontrado');
         }
         
-        // Verificar permisos: el autor o admin del chat puede eliminar
-        if (message.user_id !== userId && !isAdmin) {
-            throw new Error('No tienes permiso para eliminar este mensaje');
+        // Verificar permisos (usando role en lugar de is_admin)
+        if (!isAdmin) {
+            // Verificar si el usuario es admin del chat
+            const participant = await Participant.findOne({
+                where: { 
+                    chat_id: message.chat_id, 
+                    user_id: userId 
+                }
+            });
+            
+            const isUserAdmin = participant?.role === 'admin';
+            
+            if (message.user_id !== userId && !isUserAdmin) {
+                throw new Error('No tienes permiso para eliminar este mensaje');
+            }
         }
         
         await message.update({
@@ -128,15 +241,49 @@ export class MessageService {
         });
     }
     
-    //funcion para marcar un mensaje como leido
-    async markAsRead(chatId: string, userId: string, messageId: string): Promise<void> {
-        await Participant.update(
-            { last_read_at: new Date() },
-            { where: { chat_id: chatId, user_id: userId } }
-        );
+    // ============================================
+    // 6. MARCAR COMO LEÍDO
+    // ============================================
+    async markAsRead(chatId: string, userId: string, messageId?: string): Promise<void> {
+        const participant = await Participant.findOne({
+            where: { chat_id: chatId, user_id: userId }
+        });
+        
+        if (!participant) {
+            throw new Error('No tienes acceso a este chat');
+        }
+        
+        //  Actualizar last_read_at
+        try {
+            await Participant.update(
+                { last_read_at: new Date() },
+                { where: { chat_id: chatId, user_id: userId } }
+            );
+        } catch (error) {
+            console.log('⚠️ last_read_at no existe en Participant');
+        }
+
+        //  Si se especifica un mensaje y existe el campo is_read
+        if (messageId) {
+            try {
+                await Message.update(
+                    { is_read: true },
+                    { 
+                        where: { 
+                            id: messageId,
+                            user_id: { [Op.ne]: userId }
+                        } 
+                    }
+                );
+            } catch (error) {
+                console.log('⚠️ is_read no existe en Message');
+            }
+        }
     }
 
-    //funcion para obtener conteo de mensajes no leidos
+    // ============================================
+    // 7. OBTENER CONTEO DE NO LEÍDOS
+    // ============================================
     async getUnreadCount(chatId: string, userId: string): Promise<number> {
         const participant = await Participant.findOne({
             where: { chat_id: chatId, user_id: userId }
@@ -146,32 +293,100 @@ export class MessageService {
             return 0;
         }
         
+        //  Usar last_read_at si existe
         const lastReadAt = participant.last_read_at || new Date(0);
         
-        const count = await Message.count({
-            where: {
-                chat_id: chatId,
-                created_at: { [Op.gt]: lastReadAt },
-                user_id: { [Op.ne]: userId }
-            }
-        });
-        
-        return count;
+        try {
+            return await Message.count({
+                where: {
+                    chat_id: chatId,
+                    is_deleted: false,
+                    created_at: { [Op.gt]: lastReadAt },
+                    user_id: { [Op.ne]: userId }
+                }
+            });
+        } catch (error) {
+            // Si falla, devolver 0
+            return 0;
+        }
     }
 
+    // ============================================
+    // 8. OBTENER TOTAL DE NO LEÍDOS (TODOS CHATS)
+    // ============================================
+    async getTotalUnreadCount(userId: string): Promise<number> {
+        const participants = await Participant.findAll({
+            where: { user_id: userId },
+            attributes: ['chat_id', 'last_read_at']
+        });
+
+        if (participants.length === 0) return 0;
+
+        let totalUnread = 0;
+
+        for (const p of participants) {
+            const lastReadAt = p.last_read_at || new Date(0);
+            try {
+                const count = await Message.count({
+                    where: {
+                        chat_id: p.chat_id,
+                        is_deleted: false,
+                        created_at: { [Op.gt]: lastReadAt },
+                        user_id: { [Op.ne]: userId }
+                    }
+                });
+                totalUnread += count;
+            } catch (error) {
+                // Si falla, continuar
+                continue;
+            }
+        }
+
+        return totalUnread;
+    }
+
+    // ============================================
+    // 9. OBTENER PARTICIPANTES DE UN CHAT
+    // ============================================
+    async getChatParticipants(chatId: string): Promise<any[]> {
+        return await Participant.findAll({
+            where: { chat_id: chatId },
+            include: [
+                {
+                    model: User,
+                    attributes: ['id', 'username', 'avatar_url']
+                }
+            ]
+        });
+    }
+
+    // ============================================
+    // 10. OBTENER MENSAJE POR ID
+    // ============================================
+    async getMessageById(messageId: string): Promise<any> {
+        const message = await Message.findByPk(messageId);
+        if (!message) {
+            throw new Error('Mensaje no encontrado');
+        }
+        return message;
+    }
+
+    // ============================================
+    // MÉTODOS PRIVADOS
+    // ============================================
     
-    
-    // Función para formatear la respuesta del mensaje
     private formatMessageResponse(message: any): MessageResponse {
-        return {
+        const response: MessageResponse = {
             id: message.id,
             chat_id: message.chat_id,
             user_id: message.user_id,
             content: message.is_deleted ? 'Mensaje eliminado' : message.content,
-            type: message.type,
-            is_edited: message.is_edited,
-            is_deleted: message.is_deleted,
-            reply_to: message.reply_to,
+            type: message.type || 'text',
+            is_edited: message.is_edited || false,
+            is_deleted: message.is_deleted || false,
+            is_read: message.is_read || false,
+            reply_to: message.reply_to || null,
+            metadata: message.metadata || null,
             created_at: message.created_at,
             updated_at: message.updated_at,
             sender: message.User ? {
@@ -180,9 +395,9 @@ export class MessageService {
                 avatar_url: message.User.avatar_url
             } : undefined
         };
+        
+        return response;
     }
 }
-
-
 
 export const messageService = new MessageService();

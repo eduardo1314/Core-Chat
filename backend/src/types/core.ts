@@ -1,5 +1,8 @@
+// src/types/core.ts
 
-//tipos de chat 
+// ============================================
+// TIPOS DE CHAT
+// ============================================
 export interface CreateChatData {
     name?: string;
     type: 'private' | 'group';
@@ -26,8 +29,9 @@ export interface ChatResponse {
     unreadCount?: number;
 }
 
-
-// tipos de friends
+// ============================================
+// TIPOS DE FRIENDS
+// ============================================
 export interface FriendRequestData {
     userId: string;
     friendId: string;
@@ -57,14 +61,16 @@ export interface FriendResponse {
     };
 }
 
-
-//tipos de mensajes 
+// ============================================
+// TIPOS DE MENSAJES (ACTUALIZADOS)
+// ============================================
 export interface SendMessageData {
     chatId: string;
     userId: string;
     content: string;
-    type?: 'text' | 'image' | 'file';
+    type?: 'text' | 'image' | 'video' | 'audio' | 'file';
     replyTo?: string | null;
+    metadata?: any; //  para archivos adjuntos, reacciones, etc.
 }
 
 export interface MessageResponse {
@@ -75,7 +81,9 @@ export interface MessageResponse {
     type: string;
     is_edited: boolean;
     is_deleted: boolean;
+    is_read: boolean; // para saber si está leído
     reply_to: string | null;
+    metadata: any | null; 
     created_at: Date;
     updated_at: Date;
     sender?: {
@@ -84,3 +92,44 @@ export interface MessageResponse {
         avatar_url: string | null;
     };
 }
+
+// ============================================
+// TIPOS DE PARTICIPANTES (NUEVO)
+// ============================================
+export interface ParticipantResponse {
+    id: string;
+    chat_id: string;
+    user_id: string;
+    is_admin: boolean;
+    is_blocked: boolean;
+    last_read_at: Date | null;
+    status: 'active' | 'inactive';
+    created_at: Date;
+    updated_at: Date;
+    user?: {
+        id: string;
+        username: string;
+        avatar_url: string | null;
+    };
+}
+
+// ============================================
+// TIPOS DE RESPUESTAS DE API 
+// ============================================
+export interface ApiResponse<T = any> {
+    success: boolean;
+    data?: T;
+    error?: string;
+    message?: string;
+}
+
+export interface PaginatedResponse<T = any> {
+    success: boolean;
+    data: T[];
+    total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+    fromCache?: boolean;
+}
+

@@ -138,15 +138,23 @@ export interface FriendRequest {
 // ==================== 
 // Tipos de mensajes
 // ====================
+
+
+// ============================================
+// TIPOS DE MENSAJES (CORREGIDOS)
+// ============================================
+
 export interface Message {
     id: string;
     chat_id: string;
     user_id: string;
     content: string;
-    type: 'text' | 'image' | 'file';
+    type: 'text' | 'image' | 'file' | 'video' | 'audio'; // Agregados 'video' y 'audio'
     is_edited: boolean;
     is_deleted: boolean;
+    is_read: boolean;          
     reply_to: string | null;
+    metadata: any | null;      
     created_at: string;
     updated_at: string;
     sender?: {
@@ -154,9 +162,49 @@ export interface Message {
         username: string;
         avatar_url: string | null;
     };
+    //Para uso en frontend (mensajes temporales)
+    tempId?: string;
+    pending?: boolean;
 }
 
+// Respuesta de mensajes (coincide con el backend)
 export interface MessagesResponse {
-    messages: Message[];
+    success: boolean;
+    data: Message[];           // Cambiado de 'messages' a 'data'
     total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+    fromCache?: boolean;
+}
+
+// Respuesta de un solo mensaje
+export interface MessageResponse {
+    success: boolean;
+    data: Message;
+}
+
+// Respuesta de conteo de no leídos
+export interface UnreadCountResponse {
+    success: boolean;
+    data: {
+        unreadCount: number;
+    };
+}
+
+// Respuesta de total no leídos
+export interface TotalUnreadResponse {
+    success: boolean;
+    data: {
+        totalUnread: number;
+    };
+}
+
+// Para enviar mensaje
+export interface SendMessageData {
+    chatId: string;
+    content: string;
+    type?: 'text' | 'image' | 'file' | 'video' | 'audio';
+    replyTo?: string | null;
+    metadata?: any;
 }

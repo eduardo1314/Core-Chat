@@ -7,7 +7,8 @@ import {
     getArchivedChats,
     archiveChat,
     unarchiveChat,
-    getChatById
+    getChatById,
+    deleteChat
 } from '../controllers/chat.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 
@@ -25,6 +26,7 @@ router.post('/', createChat);
 router.get('/:chatId', getChatById);
 router.get('/:chatId/messages', getChatMessages);
 router.put('/:chatId/archive', archiveChat);
+router.delete('/:chatId', deleteChat);
 router.put('/:chatId/unarchive', unarchiveChat);
 
 export default router;

@@ -213,7 +213,7 @@ export class ChatService {
         const chatId = uuidv4();
         const chat = await Chat.create({
             id: chatId,
-            name: data.type === 'group' ? data.name : null,
+              name: data.name || null, 
             type: data.type,
             created_by: data.createdBy,
             is_archived: false
@@ -337,6 +337,30 @@ export class ChatService {
             where: { chat_id: chatId, user_id: userId }
         });
     }
+
+    // Eliminar un chat completamente (solo el usuario actual)
+   async deleteChat(chatId: string, userId: string): Promise<void> {
+    // Verificar que el usuario es participante
+    const participant = await Participant.findOne({
+        where: { chat_id: chatId, user_id: userId }
+    });
+    
+    if (!participant) {
+        throw new Error('No eres participante de este chat');
+    }
+    
+    // Eliminar participantes
+    await Participant.destroy({ where: { chat_id: chatId } });
+    
+    // Eliminar mensajes
+    await Message.destroy({ where: { chat_id: chatId } });
+    
+    // Eliminar chat
+    await Chat.destroy({ where: { id: chatId } });
 }
+
+
+    
+};
 
 export const chatService = new ChatService();

@@ -69,3 +69,14 @@ export async function createChatService(data: { type: string; name?: string; par
         throw error.response?.data || { success: false, error: 'Error de conexión' };
     }
 }
+
+
+// Eliminar un chat (NUEVO)
+export async function deleteChatService(chatId: string): Promise<ApiResponse<null>> {
+    try {
+        const response = await api.delete(`/chats/${chatId}`);
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data || { success: false, error: 'Error de conexión' };
+    }
+}

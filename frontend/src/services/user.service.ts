@@ -9,6 +9,7 @@ export interface UserSearch {
     status: string;
 }
 
+// Buscar usuarios por email
 export async function searchUsersService(email: string): Promise<ApiResponse<UserSearch | null>> {
     try {
         const response = await api.get('/users/search', { params: { email } });

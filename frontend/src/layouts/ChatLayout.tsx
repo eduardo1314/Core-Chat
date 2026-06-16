@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/chat/Sidebar';
 import ChatArea from '../components/chat/ChatArea';
+import SettingsMenu from '../components/common/SettingsMenu';
 
 const ChatLayout: React.FC = () => {
     const { user, logout } = useAuth();
@@ -140,6 +141,7 @@ const ChatLayout: React.FC = () => {
                         >
                             Cerrar Sesión
                         </button>
+                        <SettingsMenu />
                     </div>
                 </div>
             </div>
