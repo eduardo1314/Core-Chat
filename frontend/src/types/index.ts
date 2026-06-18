@@ -119,6 +119,7 @@ export interface Friend {
         email: string;
         avatar_url: string | null;
         status: string;
+        last_seen?: string | null;
     };
 }
 
@@ -208,3 +209,36 @@ export interface SendMessageData {
     replyTo?: string | null;
     metadata?: any;
 }
+
+
+// ====================
+// Tipos de usuarios
+// ====================
+export interface UserSearch {
+    id: string;
+    username: string;
+    email: string;
+    avatar_url: string | null;
+    status: string;
+    last_seen?: string | null;
+}
+
+export interface UserProfile {
+    id: string;
+    username: string;
+    email: string;
+    avatar_url: string | null;
+    status: 'online' | 'offline' | 'away';
+    last_seen: string | null;
+    created_at: string;
+}
+
+export interface UserStatus {
+    id: string;
+    username: string;
+    status: 'online' | 'offline' | 'away';
+    last_seen: string | null;
+    avatar_url: string | null;
+}
+
+

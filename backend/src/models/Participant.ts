@@ -1,5 +1,7 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '../database/config';
+import  User  from './User';
+import  Chat  from './Chat';
 
 interface ParticipantAttributes {
     id: string;
@@ -23,6 +25,10 @@ class Participant extends Model<ParticipantAttributes, ParticipantCreationAttrib
     public joined_at!: Date;
     public is_archived!: boolean;
     public archived_at!: Date | null;
+
+    // RELACIONES
+    public User!: User;
+    public Chat!: Chat;
 }
 
 Participant.init(
@@ -69,5 +75,17 @@ Participant.init(
         updatedAt: false
     }
 );
+
+//  RELACIÓN CON USER
+Participant.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'User'
+});
+
+//  RELACIÓN CON CHAT (opcional, pero útil)
+Participant.belongsTo(Chat, {
+    foreignKey: 'chat_id',
+    as: 'Chat'
+});
 
 export default Participant;

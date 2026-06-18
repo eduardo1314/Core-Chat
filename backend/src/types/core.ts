@@ -1,4 +1,3 @@
-// src/types/core.ts
 
 // ============================================
 // TIPOS DE CHAT
@@ -17,7 +16,7 @@ export interface ChatResponse {
     created_by: string;
     created_at: Date;
     updated_at: Date;
-    participants?: any[];
+    Participants?: any[];
     lastMessage?: {
         content: string;
         created_at: Date;

@@ -6,12 +6,13 @@ import {
     getFriendSuggestionsService,
     sendFriendRequestService,
     acceptFriendRequestService,
-    rejectFriendRequestService,
+    rejectFriendRequestService,  
     blockUserService,
     unblockUserService,
     checkFriendshipService
 } from '../services/friends.service';
 import { Friend, FriendRequest } from '../types';
+import { useSocket } from './useSocket';
 
 interface UseFriendsReturn {
     friends: Friend[];
@@ -39,6 +40,20 @@ export const useFriends = (): UseFriendsReturn => {
     const [suggestions, setSuggestions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // OBTENER EVENTOS DEL SOCKET
+    const { 
+        onUserOnline, 
+        offUserOnline, 
+        onUserOffline, 
+        offUserOffline,
+        onUserStatusUpdated,
+        offUserStatusUpdated
+    } = useSocket();
+
+    // ============================================
+    // FUNCIONES DE CARGA
+    // ============================================
 
     const loadFriends = useCallback(async () => {
         try {
@@ -84,6 +99,10 @@ export const useFriends = (): UseFriendsReturn => {
         }
     }, []);
 
+    // ============================================
+    // FUNCIONES DE ACCIÓN
+    // ============================================
+
     const sendRequest = useCallback(async (friendId: string) => {
         try {
             await sendFriendRequestService(friendId);
@@ -108,7 +127,7 @@ export const useFriends = (): UseFriendsReturn => {
 
     const rejectRequest = useCallback(async (requestId: string) => {
         try {
-            await rejectFriendRequestService(requestId);
+            await rejectFriendRequestService(requestId); 
             await loadPendingRequests();
         } catch (err: any) {
             setError(err.error || 'Error al rechazar solicitud');
@@ -144,6 +163,91 @@ export const useFriends = (): UseFriendsReturn => {
             return { status: 'none', isFriend: false };
         }
     }, []);
+
+    // ============================================
+    //  ESCUCHAR EVENTOS DE ONLINE/OFFLINE
+    // ============================================
+
+    useEffect(() => {
+        // Cuando un amigo se conecta
+        const handleUserOnline = (data: { userId: string; timestamp: string }) => {
+            console.log(`🟢 Amigo ${data.userId} está en línea`);
+            setFriends(prev => 
+                prev.map(friend => {
+                    const isFriend = friend.friend?.id === data.userId || friend.user_id === data.userId;
+                    if (isFriend && friend.friend) {
+                        return {
+                            ...friend,
+                            friend: {
+                                ...friend.friend,
+                                status: 'online',
+                                last_seen: data.timestamp
+                            }
+                        };
+                    }
+                    return friend;
+                })
+            );
+        };
+
+        // Cuando un amigo se desconecta
+        const handleUserOffline = (data: { userId: string; timestamp: string }) => {
+            console.log(`🔴 Amigo ${data.userId} está offline`);
+            setFriends(prev => 
+                prev.map(friend => {
+                    const isFriend = friend.friend?.id === data.userId || friend.user_id === data.userId;
+                    if (isFriend && friend.friend) {
+                        return {
+                            ...friend,
+                            friend: {
+                                ...friend.friend,
+                                status: 'offline',
+                                last_seen: data.timestamp
+                            }
+                        };
+                    }
+                    return friend;
+                })
+            );
+        };
+
+        // Cuando se actualiza el estado de un amigo
+        const handleUserStatusUpdated = (data: { userId: string; status: string; last_seen: string }) => {
+            console.log(`📌 Estado de amigo ${data.userId} actualizado: ${data.status}`);
+            setFriends(prev => 
+                prev.map(friend => {
+                    const isFriend = friend.friend?.id === data.userId || friend.user_id === data.userId;
+                    if (isFriend && friend.friend) {
+                        return {
+                            ...friend,
+                            friend: {
+                                ...friend.friend,
+                                status: data.status,
+                                last_seen: data.last_seen
+                            }
+                        };
+                    }
+                    return friend;
+                })
+            );
+        };
+
+        //  Registrar listeners
+        onUserOnline(handleUserOnline);
+        onUserOffline(handleUserOffline);
+        onUserStatusUpdated(handleUserStatusUpdated);
+
+        //  Limpiar listeners al desmontar
+        return () => {
+            offUserOnline(handleUserOnline);
+            offUserOffline(handleUserOffline);
+            offUserStatusUpdated(handleUserStatusUpdated);
+        };
+    }, [onUserOnline, offUserOnline, onUserOffline, offUserOffline, onUserStatusUpdated, offUserStatusUpdated]);
+
+    // ============================================
+    // CARGA INICIAL
+    // ============================================
 
     useEffect(() => {
         const loadAll = async () => {

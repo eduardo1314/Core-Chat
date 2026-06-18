@@ -38,16 +38,17 @@ async function startServer() {
         const processedMessages = new Map<string, number>();
         
         // Estadísticas en memoria
-        const connectedUsers = new Map<string, string>(); // socketId 
+        const connectedUsers = new Map<string, string>(); // socketId -> userId
+        const userSockets = new Map<string, Set<string>>(); // userId -> Set de socketIds
         
-     // Manejo de conexiones Socket.IO
+        // Manejo de conexiones Socket.IO
         io.on('connection', (socket) => {
             logger.info(`🔌 Usuario conectado: ${socket.id}`);
             
             // ==========================================
             // 1. IDENTIFICAR USUARIO
             // ==========================================
-            socket.on('set-user', (userId) => {
+            socket.on('set-user', async (userId) => {
                 if (!userId) {
                     logger.warn('⚠️ Intento de set-user sin userId');
                     return;
@@ -56,17 +57,50 @@ async function startServer() {
                 socket.data.userId = userId;
                 connectedUsers.set(socket.id, userId);
                 
-                logger.info(`📌 Usuario ${userId} identificado en socket ${socket.id}`);
+                // Guardar socket en lista de sockets del usuario
+                if (!userSockets.has(userId)) {
+                    userSockets.set(userId, new Set());
+                }
+                userSockets.get(userId)!.add(socket.id);
                 
-                // Notificar a otros usuarios que este usuario está en línea
-                socket.broadcast.emit('user-online', {
-                    userId,
-                    socketId: socket.id,
-                    timestamp: new Date().toISOString()
-                });
+                //  Actualizar estado en la base de datos
+                try {
+                    await User.update(
+                        { 
+                            status: 'online',
+                            last_seen: new Date()
+                        },
+                        { where: { id: userId } }
+                    );
+                    
+                    const user = await User.findByPk(userId, {
+                        attributes: ['id', 'username', 'status', 'last_seen']
+                    });
+                    
+                    logger.info(`📌 Usuario ${userId} conectado (status: online)`);
+                    
+                    // Notificar a otros usuarios que este usuario está en línea
+                    socket.broadcast.emit('user-online', {
+                        userId,
+                        username: user?.username,
+                        socketId: socket.id,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    // Confirmar al usuario
+                    socket.emit('user-status-updated', {
+                        status: 'online',
+                        last_seen: new Date().toISOString()
+                    });
+                    
+                } catch (error) {
+                    logger.error('❌ Error al actualizar estado del usuario:', error);
+                }
             });
             
-            //unir a un chat
+            // ==========================================
+            // 2. UNIRSE A UN CHAT
+            // ==========================================
             socket.on('join-chat', (chatId: string) => {
                 if (!chatId) {
                     logger.warn('⚠️ Intento de join-chat sin chatId');
@@ -76,14 +110,15 @@ async function startServer() {
                 socket.join(chatId);
                 logger.info(`📢 Socket ${socket.id} se unió al chat ${chatId}`);
                 
-                // Enviar confirmación
                 socket.emit('joined-chat', {
                     chatId,
                     success: true
                 });
             });
             
-        // salir de un chat
+            // ==========================================
+            // 3. SALIR DE UN CHAT
+            // ==========================================
             socket.on('leave-chat', (chatId: string) => {
                 if (!chatId) {
                     logger.warn('⚠️ Intento de leave-chat sin chatId');
@@ -99,12 +134,13 @@ async function startServer() {
                 });
             });
             
-            //enviar mensaje
+            // ==========================================
+            // 4. ENVIAR MENSAJE
+            // ==========================================
             socket.on('send-message', async (data) => {
                 try {
                     const { chatId, content, userId, username, tempId, messageId } = data;
                     
-                    // ✅ Validaciones
                     if (!chatId || !content || !userId) {
                         logger.error('❌ Datos incompletos:', { chatId, content, userId });
                         socket.emit('message-error', { 
@@ -114,16 +150,13 @@ async function startServer() {
                         return;
                     }
                     
-                    //  Generar ID único para prevenir duplicados
                     const uniqueId = messageId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                     
-                    //  Prevenir duplicados en el servidor
                     if (processedMessages.has(uniqueId)) {
                         logger.warn(`⚠️ Mensaje duplicado ignorado: ${uniqueId}`);
                         return;
                     }
                     
-                    // Guardar en cache por 10 segundos
                     processedMessages.set(uniqueId, Date.now());
                     setTimeout(() => {
                         processedMessages.delete(uniqueId);
@@ -131,7 +164,6 @@ async function startServer() {
                     
                     logger.info(`📨 Recibido mensaje de ${username}: "${content}" en chat ${chatId}`);
                     
-                    // Guardar en base de datos
                     const message = await Message.create({
                         id: uuidv4(),
                         chat_id: chatId,
@@ -143,7 +175,6 @@ async function startServer() {
                         is_deleted: false
                     });
                     
-                    //  Obtener mensaje con datos del usuario
                     const fullMessage = await Message.findByPk(message.id, {
                         include: [
                             { 
@@ -157,13 +188,11 @@ async function startServer() {
                         throw new Error('Mensaje no encontrado después de crear');
                     }
                     
-                    //  Actualizar fecha del chat
                     await Chat.update(
                         { updated_at: new Date() },
                         { where: { id: chatId } }
                     );
                     
-                    //  Preparar datos del mensaje
                     const messageData = {
                         ...fullMessage.toJSON(),
                         tempId: tempId || null,
@@ -171,18 +200,13 @@ async function startServer() {
                         _serverTimestamp: new Date().toISOString()
                     };
                     
-                    // ==========================================
-                    // CLAVE: Emitir a TODOS EXCEPTO al emisor
-                    // ==========================================
                     socket.to(chatId).emit('new-message', messageData);
                     
-                    //  Confirmar al emisor que su mensaje fue guardado
                     socket.emit('message-sent', {
                         ...messageData,
                         _confirmed: true
                     });
                     
-                    // Notificar que el chat se actualizó
                     io.to(chatId).emit('chat-updated', {
                         chatId,
                         lastMessage: content,
@@ -192,7 +216,7 @@ async function startServer() {
                         username: username
                     });
                     
-                    logger.info(`✅ Mensaje emitido al chat ${chatId} (ID: ${message.id})`);
+                    logger.info(` Mensaje emitido al chat ${chatId} (ID: ${message.id})`);
                     
                 } catch (error) {
                     logger.error('❌ Error al guardar mensaje:', error);
@@ -204,7 +228,9 @@ async function startServer() {
                 }
             });
             
-           // Indicador de escritura
+            // ==========================================
+            // 5. INDICADOR DE ESCRITURA
+            // ==========================================
             socket.on('typing', (data) => {
                 try {
                     const { chatId, isTyping } = data;
@@ -224,7 +250,9 @@ async function startServer() {
                 }
             });
             
-            // Eliminar mensaje
+            // ==========================================
+            // 6. ELIMINAR MENSAJE
+            // ==========================================
             socket.on('delete-message', async (data) => {
                 try {
                     const { chatId, messageId } = data;
@@ -236,7 +264,6 @@ async function startServer() {
                         return;
                     }
                     
-                    // Verificar que el usuario sea el dueño
                     if (message.user_id !== socket.data.userId) {
                         socket.emit('error', { error: 'No autorizado' });
                         return;
@@ -261,22 +288,93 @@ async function startServer() {
                 }
             });
             
-            // Manejar desconexión
-            socket.on('disconnect', () => {
+            // ==========================================
+            // 7. CIERRE DE SESIÓN MANUAL
+            // ==========================================
+            socket.on('user-offline', async (data) => {
+                const userId = data?.userId || socket.data.userId;
+                
+                if (userId) {
+                    try {
+                        await User.update(
+                            { 
+                                status: 'offline',
+                                last_seen: new Date()
+                            },
+                            { where: { id: userId } }
+                        );
+                        
+                        socket.broadcast.emit('user-offline', {
+                            userId,
+                            timestamp: new Date().toISOString()
+                        });
+                        
+                        // Eliminar todos los sockets del usuario
+                        if (userSockets.has(userId)) {
+                            userSockets.get(userId)!.forEach((socketId) => {
+                                const s = io.sockets.sockets.get(socketId);
+                                if (s) {
+                                    s.disconnect(true);
+                                }
+                            });
+                            userSockets.delete(userId);
+                        }
+                        
+                        connectedUsers.delete(socket.id);
+                        
+                        logger.info(`📌 Usuario ${userId} se desconectó manualmente`);
+                        
+                    } catch (error) {
+                        logger.error('❌ Error al actualizar estado:', error);
+                    }
+                }
+            });
+            
+            // ==========================================
+            // 8. DESCONEXIÓN
+            // ==========================================
+            socket.on('disconnect', async () => {
                 const userId = socket.data.userId;
                 logger.info(`🔌 Usuario desconectado: ${socket.id} (Usuario: ${userId || 'unknown'})`);
                 
                 if (userId) {
-                    socket.broadcast.emit('user-offline', {
-                        userId,
-                        timestamp: new Date().toISOString()
-                    });
+                    //  Verificar si el usuario tiene otros sockets activos
+                    if (userSockets.has(userId)) {
+                        userSockets.get(userId)!.delete(socket.id);
+                        
+                        // Si solo queda este socket, marcar como offline
+                        if (userSockets.get(userId)!.size === 0) {
+                            userSockets.delete(userId);
+                            
+                            try {
+                                await User.update(
+                                    { 
+                                        status: 'offline',
+                                        last_seen: new Date()
+                                    },
+                                    { where: { id: userId } }
+                                );
+                                
+                                socket.broadcast.emit('user-offline', {
+                                    userId,
+                                    timestamp: new Date().toISOString()
+                                });
+                                
+                                logger.info(`📌 Usuario ${userId} desconectado (status: offline)`);
+                                
+                            } catch (error) {
+                                logger.error('❌ Error al actualizar estado:', error);
+                            }
+                        }
+                    }
                     
                     connectedUsers.delete(socket.id);
                 }
             });
             
-            // Manejar errores de conexión
+            // ==========================================
+            // 9. PING PARA MANTENER CONEXIÓN
+            // ==========================================
             socket.on('ping', () => {
                 socket.emit('pong', {
                     timestamp: new Date().toISOString()
@@ -284,7 +382,9 @@ async function startServer() {
             });
         });
         
-        // Endpoint para estadísticas de Socket.IO
+        // ==========================================
+        // ENDPOINTS
+        // ==========================================
         app.get('/api/socket-stats', (req, res) => {
             res.json({
                 connectedUsers: connectedUsers.size,
@@ -323,7 +423,6 @@ async function startServer() {
         const gracefulShutdown = () => {
             logger.info('⚠️ Cerrando servidor...');
             
-            // Desconectar todos los sockets
             io.sockets.sockets.forEach((socket) => {
                 socket.disconnect(true);
             });
@@ -342,7 +441,6 @@ async function startServer() {
                 });
             });
             
-            // Forzar cierre después de 5 segundos
             setTimeout(() => {
                 logger.error('❌ Forzando cierre del servidor');
                 process.exit(1);

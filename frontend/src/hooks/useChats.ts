@@ -19,9 +19,9 @@ interface UseChatsReturn {
     loadActiveChats: () => Promise<void>;
     loadArchivedChats: () => Promise<void>;
     setActiveChats: React.Dispatch<React.SetStateAction<Chat[]>>;
-    addChat: (chat: Chat) => void; // Para agregar desde WebSocket
-    updateChat: (chatId: string, updates: Partial<Chat>) => void; 
-    removeChat: (chatId: string) => void; // Para eliminar desde WebSocket
+    addChat: (chat: Chat) => void;
+    updateChat: (chatId: string, updates: Partial<Chat>) => void;
+    removeChat: (chatId: string) => void;
 }
 
 export const useChats = (): UseChatsReturn => {
@@ -30,11 +30,9 @@ export const useChats = (): UseChatsReturn => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     
-    //  Prevenir múltiples llamadas simultáneas
     const isLoadingRef = useRef(false);
 
     const loadActiveChats = useCallback(async () => {
-        // Prevenir carga si ya está cargando
         if (isLoadingRef.current) {
             console.log('⏳ Ya cargando chats activos, omitiendo...');
             return;
@@ -72,10 +70,8 @@ export const useChats = (): UseChatsReturn => {
         }
     }, []);
 
-    //  Funciones para actualizar desde WebSocket sin recargar todo
     const addChat = useCallback((chat: Chat) => {
         setActiveChats(prev => {
-            // Evitar duplicados
             if (prev.some(c => c.id === chat.id)) {
                 console.log('⚠️ Chat ya existe en activos:', chat.id);
                 return prev;
@@ -103,28 +99,21 @@ export const useChats = (): UseChatsReturn => {
         setArchivedChats(prev => prev.filter(chat => chat.id !== chatId));
     }, []);
 
-    //  Mejorado: Solo recarga si es necesario
     const archiveChat = useCallback(async (chatId: string) => {
         try {
-            // Actualizar localmente primero (optimista)
             const chatToArchive = activeChats.find(c => c.id === chatId);
             if (chatToArchive) {
-                // Mover localmente a archivados
                 setActiveChats(prev => prev.filter(c => c.id !== chatId));
                 setArchivedChats(prev => [chatToArchive, ...prev]);
             }
 
-            // Llamar al servicio
             await archiveChatService(chatId);
             
-            // Recargar solo si es necesario (para sincronizar)
-            // Usar setTimeout para evitar ciclos
             setTimeout(() => {
                 loadActiveChats();
                 loadArchivedChats();
             }, 100);
         } catch (err: any) {
-            // Revertir cambio optimista
             await loadActiveChats();
             await loadArchivedChats();
             setError(err.error || 'Error al archivar chat');
@@ -133,7 +122,6 @@ export const useChats = (): UseChatsReturn => {
 
     const unarchiveChat = useCallback(async (chatId: string) => {
         try {
-            // Actualizar localmente primero (optimista)
             const chatToUnarchive = archivedChats.find(c => c.id === chatId);
             if (chatToUnarchive) {
                 setArchivedChats(prev => prev.filter(c => c.id !== chatId));
@@ -153,12 +141,17 @@ export const useChats = (): UseChatsReturn => {
         }
     }, [archivedChats, loadActiveChats, loadArchivedChats]);
 
-    // Mejorado: No recargar todo si no es necesario
+    //  createChat con nombre del otro usuario para chats privados
     const createChat = useCallback(async (participantIds: string[], type = 'private', name?: string): Promise<Chat | null> => {
         try {
-            const response = await createChatService({ type, name, participantIds });
+            //  Si es privado y no se proporcionó nombre, el nombre será el del otro usuario
+            let chatName = name;
+            if (type === 'private' && !chatName && participantIds.length === 1) {
+                chatName = null as any; // Dejar que el backend maneje el nombre
+            }
+            
+            const response = await createChatService({ type, name: chatName || undefined, participantIds });
             if (response.success && response.data) {
-                // Agregar localmente sin recargar todo
                 setActiveChats(prev => [response.data!, ...prev]);
                 return response.data;
             }
@@ -169,7 +162,6 @@ export const useChats = (): UseChatsReturn => {
         }
     }, []);
 
-    //  Carga inicial solo una vez
     useEffect(() => {
         let mounted = true;
         
@@ -185,7 +177,7 @@ export const useChats = (): UseChatsReturn => {
         return () => {
             mounted = false;
         };
-    }, []); // Sin dependencias para evitar recargas
+    }, []);
 
     return {
         activeChats,

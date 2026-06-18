@@ -1,17 +1,54 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../hooks/useSocket'; // aqui traigo los eventos de socket
+import { usePageVisibility } from '../hooks/usePageVisibility';
+import { useReconnection } from '../hooks/useReconnection'; //  HOOK DE RECONEXIÓN
 import Sidebar from '../components/chat/Sidebar';
 import ChatArea from '../components/chat/ChatArea';
 import SettingsMenu from '../components/common/SettingsMenu';
 
 const ChatLayout: React.FC = () => {
     const { user, logout } = useAuth();
+    const { socket, emitUserOffline } = useSocket(); // OBTENER SOCKET
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [selectedChatName, setSelectedChatName] = useState<string>('');
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
+    //  ACTIVAR DETECCIÓN DE CIERRE DE PESTAÑA
+    usePageVisibility();
 
-     //función para manejar la selección de chat, ahora también recibe el nombre del chat
+    // ACTIVAR RECONEXIÓN AUTOMÁTICA
+    useReconnection();
+    // ==========================================
+    //  LOGOUT CON SOCKET
+    // ==========================================
+    const handleLogout = async () => {
+        try {
+            // 1. Notificar al servidor que el usuario se va
+            if (user?.id) {
+                console.log(`📤 Usuario ${user.id} cerrando sesión`);
+                emitUserOffline(user.id);
+                
+                // 2. Esperar un poco para que se procese
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // 3. Desconectar socket
+                if (socket) {
+                    socket.disconnect();
+                }
+            }
+            
+            // 4. Llamar al logout del contexto
+            await logout();
+            
+        } catch (error) {
+            console.error('❌ Error al cerrar sesión:', error);
+            // Si hay error, igual intentar logout
+            await logout();
+        }
+    };
+
+    // Función para manejar la selección de chat
     const handleSelectChat = (chatId: string | null, chatName?: string) => {
         console.log('📌 Chat seleccionado:', { chatId, chatName });
         setSelectedChatId(chatId);
@@ -20,7 +57,104 @@ const ChatLayout: React.FC = () => {
 
     // Animación de partículas
     useEffect(() => {
-        // ... tu código de partículas (no cambia) ...
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        const checkDarkMode = () => {
+            return document.documentElement.classList.contains('dark');
+        };
+        
+        let animationId: number;
+        let particles: Particle[] = [];
+        
+        interface Particle {
+            x: number;
+            y: number;
+            size: number;
+            speedX: number;
+            speedY: number;
+            opacity: number;
+            color: string;
+        }
+        
+        const colors = ['rgba(59, 130, 246, ', 'rgba(6, 182, 212, ', 'rgba(96, 165, 250, '];
+        
+        const initParticles = () => {
+            particles = [];
+            const particleCount = 100;
+            for (let i = 0; i < particleCount; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: 2 + Math.random() * 4,
+                    speedX: (Math.random() - 0.5) * 0.5,
+                    speedY: (Math.random() - 0.5) * 0.3,
+                    opacity: 0.3 + Math.random() * 0.5,
+                    color: colors[Math.floor(Math.random() * colors.length)]
+                });
+            }
+        };
+        
+        const resizeCanvas = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initParticles();
+        };
+        
+        const animate = () => {
+            if (!ctx || !canvas) return;
+            
+            if (!checkDarkMode()) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                animationId = requestAnimationFrame(animate);
+                return;
+            }
+            
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            for (let p of particles) {
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = `${p.color}${p.opacity})`;
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${p.opacity * 0.5})`;
+                ctx.fill();
+                
+                p.x += p.speedX;
+                p.y += p.speedY;
+                
+                if (p.x < -50) p.x = canvas.width + 50;
+                if (p.x > canvas.width + 50) p.x = -50;
+                if (p.y < -50) p.y = canvas.height + 50;
+                if (p.y > canvas.height + 50) p.y = -50;
+            }
+            
+            animationId = requestAnimationFrame(animate);
+        };
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        const observer = new MutationObserver(() => {
+            if (checkDarkMode()) {
+                initParticles();
+            }
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+        
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        animate();
+        
+        return () => {
+            window.removeEventListener('resize', resizeCanvas);
+            observer.disconnect();
+            cancelAnimationFrame(animationId);
+        };
     }, []);
 
     return (
@@ -41,7 +175,7 @@ const ChatLayout: React.FC = () => {
                             <span className="text-gray-700 dark:text-gray-200">{user?.username}</span>
                         </div>
                         <button
-                            onClick={logout}
+                            onClick={handleLogout} 
                             className="bg-gray-100 hover:bg-gray-200 dark:bg-blue-600/50 dark:hover:bg-blue-600/70 text-gray-700 dark:text-white px-4 py-2 rounded-lg transition-all duration-300 hover:scale-105"
                         >
                             Cerrar Sesión

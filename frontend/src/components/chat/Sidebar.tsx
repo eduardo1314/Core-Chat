@@ -1,43 +1,57 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useFriends } from '../../hooks/useFriends';
 import { useChats } from '../../hooks/useChats';
 import { useAuth } from '../../hooks/useAuth';
 import { searchUsersService } from '../../services/user.service';
 import { deleteChatService } from '../../services/chats.service';
-import { getUnreadCountService, getTotalUnreadCountService } from '../../services/messages.service'; 
+import { getUnreadCountService, getTotalUnreadCountService } from '../../services/messages.service';
 import FriendMenu from '../common/FriendMenu';
+import { formatLastSeen } from '../../../utils/formatLastSeen';
+import { Chat } from "../../types";
 
+// ============================================
+// TIPOS E INTERFACES
+// ============================================
 interface SidebarProps {
-     onSelectChat: (chatId: string | null, chatName?: string) => void;
-    
+    onSelectChat: (chatId: string | null, chatName?: string, isOnline?: boolean, lastSeen?: string | null) => void;
     selectedChatId: string | null;
 }
 
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
 const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     const { user } = useAuth();
-    const { 
-        friends, 
-        pendingRequests, 
+
+    // ============================================
+    // HOOKS
+    // ============================================
+    const {
+        friends,
+        pendingRequests,
         sentRequests,
-        loading: friendsLoading, 
-        sendRequest, 
+        loading: friendsLoading,
+        sendRequest,
         acceptRequest,
         rejectRequest,
         loadPendingRequests,
         blockUser,
-        unblockUser,
         loadFriends
     } = useFriends();
-    const { 
-        activeChats, 
-        archivedChats, 
-        createChat, 
-        archiveChat, 
-        unarchiveChat, 
-        loadActiveChats, 
-        loadArchivedChats 
+
+    const {
+        activeChats,
+        archivedChats,
+        createChat,
+        archiveChat,
+        unarchiveChat,
+        loadActiveChats,
+        loadArchivedChats
     } = useChats();
-    
+
+    // ============================================
+    // ESTADOS LOCALES
+    // ============================================
     const [showAddFriend, setShowAddFriend] = useState(false);
     const [friendEmail, setFriendEmail] = useState('');
     const [searchResult, setSearchResult] = useState<any>(null);
@@ -47,17 +61,67 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     const [isCreatingChat, setIsCreatingChat] = useState(false);
     const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set());
     const [customNames, setCustomNames] = useState<Map<string, string>>(new Map());
-    const [unreadCounts, setUnreadCounts] = useState<Map<string, number>>(new Map()); // conteo de no leídos por chat
-    const [totalUnread, setTotalUnread] = useState(0); //  total de no leídos
-    
-    // Ref para prevenir clics múltiples
-    const [lastChatCreation, setLastChatCreation] = useState<number>(0);
+    const [unreadCounts, setUnreadCounts] = useState<Map<string, number>>(new Map());
+    const [totalUnread, setTotalUnread] = useState(0);
+    const lastChatCreationRef = useRef<number>(0);
 
-    // Cargar nombres personalizados guardados
+    // ============================================
+    // FUNCIÓN PARA VERIFICAR SI ESTÁ REALMENTE EN LÍNEA
+    // ============================================
+    const isActuallyOnline = useCallback((status: string | undefined, lastSeen: string | null | undefined): boolean => {
+        if (status !== 'online') return false;
+        if (!lastSeen) return false;
+        
+        const now = Date.now();
+        const lastSeenDate = new Date(lastSeen).getTime();
+        const diffSeconds = (now - lastSeenDate) / 1000;
+        
+        return diffSeconds < 120;
+    }, []);
+
+    // ============================================
+    //  FUNCIÓN PARA BUSCAR CHAT PRIVADO EXISTENTE
+    // ============================================
+    const findExistingPrivateChat = useCallback((friendId: string) => {
+        const allChats = [...activeChats, ...archivedChats];
+        
+        return allChats.find(chat => {
+            if (chat.type !== 'private') return false;
+            
+            // Buscar en Participants
+            if (chat.Participants && chat.Participants.length > 0) {
+                const hasFriend = chat.Participants.some((p: any) => p.id === friendId || p.user_id === friendId);
+                const hasCurrentUser = chat.Participants.some((p: any) => p.id === user?.id || p.user_id === user?.id);
+                if (hasFriend && hasCurrentUser) return true;
+            }
+            
+            // Buscar en Users
+            if (chat.Users && chat.Users.length > 0) {
+                const hasFriend = chat.Users.some((u: any) => u.id === friendId);
+                const hasCurrentUser = chat.Users.some((u: any) => u.id === user?.id);
+                if (hasFriend && hasCurrentUser) return true;
+            }
+            
+            // Buscar por nombre
+            if (chat.name === friendId) return true;
+            
+            return false;
+        });
+    }, [activeChats, archivedChats, user]);
+
+    // ============================================
+    // EFECTOS
+    // ============================================
+
+    // Cargar nombres personalizados
     useEffect(() => {
         const saved = localStorage.getItem('customFriendNames');
         if (saved) {
-            setCustomNames(new Map(Object.entries(JSON.parse(saved))));
+            try {
+                setCustomNames(new Map(Object.entries(JSON.parse(saved))));
+            } catch (error) {
+                console.error('Error al cargar nombres personalizados:', error);
+            }
         }
     }, []);
 
@@ -73,71 +137,130 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         loadBlocked();
     }, [friends]);
 
-    //  Cargar conteo de no leídos
-    const loadUnreadCounts = useCallback(async () => {
-        try {
-            // Obtener total de no leídos
-            const totalResponse = await getTotalUnreadCountService();
-            if (totalResponse.success) {
-                setTotalUnread(totalResponse.data?.totalUnread || 0);
-            }
-
-            // Obtener no leídos por chat
-            const counts = new Map<string, number>();
-            for (const chat of activeChats) {
-                try {
-                    const response = await getUnreadCountService(chat.id);
-                    if (response.success) {
-                        const count = response.data?.unreadCount || 0;
-                        if (count > 0) {
-                            counts.set(chat.id, count);
-                        }
-                    }
-                } catch (error) {
-                    console.error(`Error al obtener no leídos del chat ${chat.id}:`, error);
-                }
-            }
-            setUnreadCounts(counts);
-        } catch (error) {
-            console.error('❌ Error al cargar no leídos:', error);
-        }
-    }, [activeChats]);
-
-    // Cargar no leídos cuando cambian los chats
+    // Cargar conteo de no leídos
     useEffect(() => {
+        const loadUnreadCounts = async () => {
+            try {
+                const totalResponse = await getTotalUnreadCountService();
+                if (totalResponse.success) {
+                    setTotalUnread(totalResponse.data?.totalUnread || 0);
+                }
+
+                const counts = new Map<string, number>();
+                for (const chat of activeChats) {
+                    try {
+                        const response = await getUnreadCountService(chat.id);
+                        if (response.success) {
+                            const count = response.data?.unreadCount || 0;
+                            if (count > 0) counts.set(chat.id, count);
+                        }
+                    } catch (error) {
+                        console.error(`Error al obtener no leídos del chat ${chat.id}:`, error);
+                    }
+                }
+                setUnreadCounts(counts);
+            } catch (error) {
+                console.error('❌ Error al cargar no leídos:', error);
+            }
+        };
+
         if (activeChats.length > 0) {
             loadUnreadCounts();
         }
-    }, [activeChats, loadUnreadCounts]);
+    }, [activeChats]);
 
-    //  Buscar en TODOS los chats y prevenir duplicados
-    const startChat = async (friendId: string, friendName: string) => {
+    // ============================================
+    // FUNCIONES PRINCIPALES
+    // ============================================
+
+    // Obtener información del amigo desde un chat
+    const getFriendInfoFromChat = useCallback((chat: Chat) => {
+        if (chat.type !== 'private') {
+            return { 
+                displayName: chat.name || 'Chat', 
+                isOnline: false, 
+                lastSeen: null, 
+                avatar: '💬',
+                avatarBg: 'from-purple-500 to-pink-500'
+            };
+        }
+
+        let displayName = '';
+        let avatar = '';
+        let avatarBg = 'from-blue-500 to-cyan-500';
+        let friendId = '';
+        let isOnline = false;
+        let lastSeen: string | null = null;
+
+        // Buscar en Participants
+        if (chat.Participants && chat.Participants.length > 0) {
+            const otherUser = chat.Participants.find((p: any) => p.id !== user?.id);
+            if (otherUser) {
+                friendId = otherUser.id;
+                const username = otherUser.User?.username || otherUser.username || otherUser.user_id || otherUser.id;
+                displayName = customNames.get(otherUser.id) || username || 'Usuario';
+                avatar = displayName.charAt(0).toUpperCase();
+            }
+        }
+
+        // Si no se encontró en Participants, buscar en Users
+        if (!friendId && chat.Users && chat.Users.length > 0) {
+            const otherUser = chat.Users.find((u: any) => u.id !== user?.id);
+            if (otherUser) {
+                friendId = otherUser.id;
+                displayName = customNames.get(otherUser.id) || otherUser.username || 'Usuario';
+                avatar = displayName.charAt(0).toUpperCase();
+            }
+        }
+
+        // Si no se encontró en ninguno, usar chat.name
+        if (!friendId && chat.name) {
+            displayName = chat.name;
+            avatar = displayName.charAt(0).toUpperCase();
+        }
+
+        // Fallback
+        if (!displayName) {
+            displayName = 'Usuario';
+            avatar = '👤';
+            avatarBg = 'from-gray-500 to-gray-600';
+        }
+
+        // Obtener estado del amigo
+        if (friendId) {
+            const friendData = friends.find(f => f.friend?.id === friendId || f.user_id === friendId);
+            if (friendData?.friend) {
+                const status = friendData.friend.status;
+                const lastSeenRaw = friendData.friend.last_seen || null;
+                isOnline = isActuallyOnline(status, lastSeenRaw);
+                lastSeen = lastSeenRaw;
+            }
+        }
+
+        return { displayName, avatar, avatarBg, friendId, isOnline, lastSeen };
+    }, [user, customNames, friends, isActuallyOnline]);
+
+    // Iniciar chat con un amigo 
+    const startChat = useCallback(async (friendId: string, friendName: string) => {
         if (!friendId || isCreatingChat) return;
-        
+
         const now = Date.now();
-        if (now - lastChatCreation < 1000) {
+        if (now - lastChatCreationRef.current < 1000) {
             console.log('⏳ Preveniendo creación duplicada de chat');
             return;
         }
-        
+
         if (blockedUsers.has(friendId)) {
             alert('❌ No puedes chatear con un usuario bloqueado');
             return;
         }
-        
+
         setIsCreatingChat(true);
-        setLastChatCreation(now);
-        
+        lastChatCreationRef.current = now;
+
         try {
-            const allChats = [...activeChats, ...archivedChats];
-            
-            const existingChat = allChats.find(chat => {
-                if (chat.type !== 'private') return false;
-                const participants = chat.Participants || [];
-                const hasFriend = participants.some((p: any) => p.id === friendId);
-                const hasCurrentUser = participants.some((p: any) => p.id === user?.id);
-                return hasFriend && hasCurrentUser;
-            });
+            //  Buscar chat existente con la nueva función
+            const existingChat = findExistingPrivateChat(friendId);
             
             if (existingChat) {
                 const isArchived = archivedChats.some(c => c.id === existingChat.id);
@@ -146,14 +269,36 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                     await loadActiveChats();
                     await loadArchivedChats();
                 }
-                onSelectChat(existingChat.id);
+
+                const friendData = friends.find(f => f.friend?.id === friendId);
+                const status = friendData?.friend?.status;
+                const lastSeen = friendData?.friend?.last_seen || null;
+                const isOnline = isActuallyOnline(status, lastSeen);
+                
+                onSelectChat(
+                    existingChat.id,
+                    friendName,
+                    isOnline,
+                    lastSeen
+                );
                 return;
             }
-            
+
+            // No existe, crear nuevo chat
             const newChat = await createChat([friendId], 'private', friendName);
             if (newChat) {
                 await loadActiveChats();
-                onSelectChat(newChat.id);
+                const friendData = friends.find(f => f.friend?.id === friendId);
+                const status = friendData?.friend?.status;
+                const lastSeen = friendData?.friend?.last_seen || null;
+                const isOnline = isActuallyOnline(status, lastSeen);
+                
+                onSelectChat(
+                    newChat.id,
+                    friendName,
+                    isOnline,
+                    lastSeen
+                );
             }
         } catch (error) {
             console.error('Error al crear chat:', error);
@@ -161,73 +306,74 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         } finally {
             setIsCreatingChat(false);
         }
-    };
+    }, [findExistingPrivateChat, blockedUsers, createChat, unarchiveChat, loadActiveChats, loadArchivedChats, friends, onSelectChat, isActuallyOnline, archivedChats]);
 
-    //  Función para actualizar el nombre del chat
-    const handleEditName = (friendId: string, newName: string) => {
+    // Editar nombre de amigo
+    const handleEditName = useCallback((friendId: string, newName: string) => {
         setCustomNames(prev => new Map(prev).set(friendId, newName));
         const saved = JSON.parse(localStorage.getItem('customFriendNames') || '{}');
         saved[friendId] = newName;
         localStorage.setItem('customFriendNames', JSON.stringify(saved));
-    };
+    }, []);
 
-    const handleDeleteChat = async (chatId: string, chatName: string) => {
-        if (window.confirm(`¿Estás seguro de que quieres eliminar el chat con ${chatName}?`)) {
-            try {
-                await deleteChatService(chatId);
-                await loadActiveChats();
-                await loadArchivedChats();
-                if (selectedChatId === chatId) {
-                    onSelectChat(null);
-                }
-                alert('✅ Chat eliminado');
-            } catch (error) {
-                alert('❌ Error al eliminar chat');
-            }
+    // Eliminar chat
+    const handleDeleteChat = useCallback(async (chatId: string, chatName: string) => {
+        if (!window.confirm(`¿Estás seguro de que quieres eliminar el chat con ${chatName}?`)) return;
+
+        try {
+            await deleteChatService(chatId);
+            await loadActiveChats();
+            await loadArchivedChats();
+            if (selectedChatId === chatId) onSelectChat(null);
+            alert(' Chat eliminado');
+        } catch (error) {
+            alert(' Error al eliminar chat');
         }
-    };
+    }, [selectedChatId, onSelectChat, loadActiveChats, loadArchivedChats]);
 
-    const handleBlockUser = async (friendId: string | undefined, friendName: string) => {
+    // Bloquear usuario
+    const handleBlockUser = useCallback(async (friendId: string | undefined, friendName: string) => {
         if (!friendId) {
             alert('❌ Error: ID de usuario no válido');
             return;
         }
-        if (window.confirm(`¿Estás seguro de que quieres bloquear a ${friendName}?`)) {
-            try {
-                await blockUser(friendId);
-                await loadFriends();
-                setBlockedUsers(prev => new Set([...prev, friendId]));
-                alert(`✅ Usuario ${friendName} bloqueado`);
-            } catch (error) {
-                alert('❌ Error al bloquear usuario');
-            }
-        }
-    };
+        if (!window.confirm(`¿Estás seguro de que quieres bloquear a ${friendName}?`)) return;
 
-    const handleArchiveChat = async (chatId: string) => {
+        try {
+            await blockUser(friendId);
+            await loadFriends();
+            setBlockedUsers(prev => new Set([...prev, friendId]));
+            alert(`✅ Usuario ${friendName} bloqueado`);
+        } catch (error) {
+            alert('❌ Error al bloquear usuario');
+        }
+    }, [blockUser, loadFriends]);
+
+    // Archivar chat
+    const handleArchiveChat = useCallback(async (chatId: string) => {
         await archiveChat(chatId);
         await loadActiveChats();
         await loadArchivedChats();
-        if (selectedChatId === chatId) {
-            onSelectChat(null);
-        }
-    };
+        if (selectedChatId === chatId) onSelectChat(null);
+    }, [archiveChat, loadActiveChats, loadArchivedChats, selectedChatId, onSelectChat]);
 
-    const handleUnarchiveChat = async (chatId: string) => {
+    // Desarchivar chat
+    const handleUnarchiveChat = useCallback(async (chatId: string) => {
         await unarchiveChat(chatId);
         await loadActiveChats();
         await loadArchivedChats();
         onSelectChat(chatId);
-    };
+    }, [unarchiveChat, loadActiveChats, loadArchivedChats, onSelectChat]);
 
-    const handleSearchUser = async (e: React.FormEvent) => {
+    // Buscar usuario
+    const handleSearchUser = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
         if (!friendEmail) return;
-        
+
         setSearching(true);
         setSearchError('');
         setSearchResult(null);
-        
+
         try {
             const response = await searchUsersService(friendEmail);
             if (response.success && response.data) {
@@ -240,9 +386,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         } finally {
             setSearching(false);
         }
-    };
+    }, [friendEmail]);
 
-    const handleSendFriendRequest = async (friendId: string) => {
+    // Enviar solicitud de amistad
+    const handleSendFriendRequest = useCallback(async (friendId: string) => {
         try {
             await sendRequest(friendId);
             setSearchResult(null);
@@ -252,26 +399,22 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         } catch (err) {
             alert('❌ Error al enviar solicitud');
         }
-    };
+    }, [sendRequest]);
 
-    // Memoizar amigos aceptados
-    const acceptedFriends = useMemo(() => 
+    // ============================================
+    // MEMOIZACIÓN
+    // ============================================
+
+    const acceptedFriends = useMemo(() =>
         friends.filter(f => f.status === 'accepted'),
         [friends]
     );
 
-    if (friendsLoading) {
-        return (
-            <div className="w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
-                <div className="flex-1 flex items-center justify-center">
-                    <div className="text-gray-500">Cargando...</div>
-                </div>
-            </div>
-        );
-    }
+    // ============================================
+    // RENDERIZADO DE LISTAS
+    // ============================================
 
-    //  Renderizar lista de chats con indicador de no leídos
-    const renderChatList = (chats: any[], showArchiveButton = true) => (
+    const renderChatList = useCallback((chats: any[], showArchiveButton = true) => (
         <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {chats.length === 0 ? (
                 <div className="p-8 text-center text-gray-400 text-sm">
@@ -281,60 +424,24 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                 </div>
             ) : (
                 chats.map(chat => {
-                    let displayName = '';
-                    let avatar = '';
-                    let avatarBg = '';
-                    const unreadCount = unreadCounts.get(chat.id) || 0; // Obtener no leídos
-                    
-                    if (chat.type === 'private') {
-                        if (chat.Participants && chat.Participants.length > 0) {
-                            const otherUser = chat.Participants.find((p: any) => p.id !== user?.id);
-                            if (otherUser && otherUser.username) {
-                                displayName = customNames.get(otherUser.id) || otherUser.username;
-                                avatar = displayName.charAt(0).toUpperCase();
-                                avatarBg = 'from-blue-500 to-cyan-500';
-                            }
-                        }
-                        
-                        if (!displayName && chat.name) {
-                            displayName = chat.name;
-                            avatar = displayName.charAt(0).toUpperCase();
-                            avatarBg = 'from-blue-500 to-cyan-500';
-                        }
-                        
-                        if (!displayName) {
-                            displayName = 'Usuario';
-                            avatar = '👤';
-                            avatarBg = 'from-gray-500 to-gray-600';
-                        }
-                    } else if (chat.type === 'group') {
-                        displayName = chat.name || 'Grupo';
-                        avatar = displayName.charAt(0).toUpperCase();
-                        avatarBg = 'from-purple-500 to-pink-500';
-                    } else {
-                        displayName = 'Chat';
-                        avatar = '💬';
-                        avatarBg = 'from-blue-500 to-cyan-500';
-                    }
-                    
+                    const { displayName, avatar, avatarBg, isOnline, lastSeen } = getFriendInfoFromChat(chat);
+                    const unreadCount = unreadCounts.get(chat.id) || 0;
+
                     return (
                         <div
                             key={chat.id}
                             className="flex items-center justify-between group hover:bg-gray-50 dark:hover:bg-gray-800 transition"
                         >
-                                    <div
-            onClick={() => onSelectChat(chat.id, displayName)}  // ✅ PASAR displayName
-            className={`flex items-center gap-3 p-4 flex-1 cursor-pointer ${
-                selectedChatId === chat.id ? 'bg-blue-50 dark:bg-blue-900/30' : ''
-            }`}
-        >
-
-                                
+                            <div
+                                onClick={() => onSelectChat(chat.id, displayName, isOnline, lastSeen)}
+                                className={`flex items-center gap-3 p-4 flex-1 cursor-pointer ${
+                                    selectedChatId === chat.id ? 'bg-blue-50 dark:bg-blue-900/30' : ''
+                                }`}
+                            >
                                 <div className="relative">
                                     <div className={`w-12 h-12 bg-gradient-to-r ${avatarBg} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md`}>
                                         {avatar === '👤' || avatar === '💬' ? avatar : avatar}
                                     </div>
-                                    {/*  Indicador de no leídos */}
                                     {unreadCount > 0 && (
                                         <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
                                             {unreadCount > 9 ? '9+' : unreadCount}
@@ -361,7 +468,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                                 </div>
                             </div>
                             <div className="flex gap-1 mr-2 flex-shrink-0">
-                                {showArchiveButton && (
+                                {showArchiveButton ? (
                                     <>
                                         <button
                                             onClick={() => handleDeleteChat(chat.id, displayName)}
@@ -378,8 +485,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                                             📦
                                         </button>
                                     </>
-                                )}
-                                {!showArchiveButton && (
+                                ) : (
                                     <button
                                         onClick={() => handleUnarchiveChat(chat.id)}
                                         className="p-2 text-gray-400 hover:text-green-500 transition opacity-0 group-hover:opacity-100"
@@ -394,69 +500,55 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                 })
             )}
         </div>
-    );
+    ), [getFriendInfoFromChat, onSelectChat, selectedChatId, unreadCounts, user, handleDeleteChat, handleArchiveChat, handleUnarchiveChat]);
+
+    // ============================================
+    // RENDER
+    // ============================================
+
+    if (friendsLoading) {
+        return (
+            <div className="w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
+                <div className="flex-1 flex items-center justify-center">
+                    <div className="text-gray-500">Cargando...</div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
             {/* Header con tabs */}
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex gap-2 mb-3">
-                    <button
-                        onClick={() => setActiveTab('chats')}
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg transition relative ${
-                            activeTab === 'chats' 
-                                ? 'bg-blue-500 text-white' 
-                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                        }`}
-                    >
-                        💬 Chats
-                        {/*  Total de no leídos en el tab */}
-                        {totalUnread > 0 && (
-                            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
-                                {totalUnread > 9 ? '9+' : totalUnread}
-                            </span>
-                        )}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('friends')}
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${
-                            activeTab === 'friends' 
-                                ? 'bg-blue-500 text-white' 
-                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                        }`}
-                    >
-                        👥 Amigos
-                    </button>
-                    <button
-                        onClick={() => {
-                            setActiveTab('requests');
-                            loadPendingRequests();
-                        }}
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg transition relative ${
-                            activeTab === 'requests' 
-                                ? 'bg-blue-500 text-white' 
-                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                        }`}
-                    >
-                        📨 Solicitudes
-                        {pendingRequests.length > 0 && (
-                            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
-                                {pendingRequests.length}
-                            </span>
-                        )}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('archived')}
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg transition ${
-                            activeTab === 'archived' 
-                                ? 'bg-blue-500 text-white' 
-                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                        }`}
-                    >
-                        📦 Archivados
-                    </button>
+                    {[
+                        { id: 'chats', label: '💬 Chats', badge: totalUnread },
+                        { id: 'friends', label: '👥 Amigos' },
+                        { id: 'requests', label: '📨 Solicitudes', badge: pendingRequests.length },
+                        { id: 'archived', label: '📦 Archivados' }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => {
+                                setActiveTab(tab.id as any);
+                                if (tab.id === 'requests') loadPendingRequests();
+                            }}
+                            className={`flex-1 py-2 text-sm font-medium rounded-lg transition relative ${
+                                activeTab === tab.id
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                            }`}
+                        >
+                            {tab.label}
+                            {tab.badge ? (
+                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
+                                    {tab.badge > 9 ? '9+' : tab.badge}
+                                </span>
+                            ) : null}
+                        </button>
+                    ))}
                 </div>
-                
+
                 {/* Botón agregar amigo */}
                 <button
                     onClick={() => {
@@ -472,7 +564,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                     </svg>
                     Agregar Amigo
                 </button>
-                
+
                 {/* Panel de búsqueda */}
                 {showAddFriend && (
                     <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -482,28 +574,28 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                                 type="email"
                                 placeholder="ejemplo@correo.com"
                                 value={friendEmail}
-                                onChange={(e) => setFriendEmail(e.target.value)}
+                                onChange={e => setFriendEmail(e.target.value)}
                                 className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 autoFocus
                             />
-                            <button 
-                                type="submit" 
+                            <button
+                                type="submit"
                                 disabled={searching}
                                 className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
                             >
                                 {searching ? '...' : 'Buscar'}
                             </button>
                         </form>
-                        
+
                         {searching && <div className="mt-3 text-center text-gray-500 text-sm">Buscando usuario...</div>}
                         {searchError && <div className="mt-3 p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm rounded-lg text-center">{searchError}</div>}
-                        
+
                         {searchResult && (
                             <div className="mt-3 p-3 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 shadow-sm">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md flex-shrink-0">
-                                            {searchResult.username.charAt(0).toUpperCase()}
+                                            {searchResult.username?.charAt(0).toUpperCase() || '?'}
                                         </div>
                                         <div>
                                             <p className="font-semibold text-gray-800 dark:text-white">{searchResult.username}</p>
@@ -530,9 +622,9 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
             {/* Contenido según tab activo */}
             <div className="flex-1 overflow-y-auto">
                 {activeTab === 'chats' && renderChatList(activeChats, true)}
-                
                 {activeTab === 'archived' && renderChatList(archivedChats, false)}
 
+                {/* Tab Amigos */}
                 {activeTab === 'friends' && (
                     <div className="divide-y divide-gray-100 dark:divide-gray-800">
                         {acceptedFriends.length === 0 ? (
@@ -549,9 +641,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                                 {acceptedFriends.map(friend => {
                                     const originalName = friend.friend?.username || 'Usuario';
                                     const displayName = customNames.get(friend.friend!.id) || originalName;
-                                    const isOnline = friend.friend?.status === 'online';
+                                    const status = friend.friend?.status;
+                                    const lastSeen = friend.friend?.last_seen || null;
+                                    const isOnline = isActuallyOnline(status, lastSeen);
                                     const avatar = displayName.charAt(0).toUpperCase();
-                                    
+
                                     return (
                                         <div
                                             key={friend.id}
@@ -564,11 +658,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                                                     </div>
                                                     <div className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-gray-900 ${
                                                         isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'
-                                                    }`}></div>
+                                                    }`} />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <h3 className="font-medium text-gray-800 dark:text-white truncate">{displayName}</h3>
-                                                    <p className="text-xs text-gray-400">{isOnline ? 'En línea' : 'Desconectado'}</p>
+                                                    <p className="text-xs">
+                                                        {isOnline ? (
+                                                            <span className="text-green-500">🟢 En línea</span>
+                                                        ) : (
+                                                            <span className="text-gray-500">{formatLastSeen(lastSeen)}</span>
+                                                        )}
+                                                    </p>
                                                 </div>
                                             </div>
                                             <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
@@ -589,6 +689,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                     </div>
                 )}
 
+                {/* Tab Solicitudes */}
                 {activeTab === 'requests' && (
                     <div>
                         {pendingRequests.length === 0 && sentRequests.length === 0 ? (
@@ -598,7 +699,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                             </div>
                         ) : (
                             <>
-                                {/* Solicitudes recibidas */}
                                 {pendingRequests.length > 0 && (
                                     <div>
                                         <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 sticky top-0">
@@ -633,8 +733,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                                         ))}
                                     </div>
                                 )}
-                                
-                                {/* Solicitudes enviadas */}
+
                                 {sentRequests.length > 0 && (
                                     <div>
                                         <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 sticky top-0">
@@ -648,7 +747,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                                                 <div className="flex-1 min-w-0">
                                                     <p className="font-medium text-gray-800 dark:text-white truncate">{req.friend?.username}</p>
                                                     <p className="text-xs text-yellow-500 flex items-center gap-1">
-                                                        <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
+                                                        <span className="inline-block w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
                                                         Pendiente...
                                                     </p>
                                                 </div>

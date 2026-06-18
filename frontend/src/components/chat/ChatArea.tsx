@@ -1,36 +1,47 @@
-// src/components/ChatWindow.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useMessages } from '../../hooks/useMessages';
 import { useAuth } from '../../hooks/useAuth';
+import { formatLastSeen } from '../../../utils/formatLastSeen';
 
 interface ChatWindowProps {
     chatId: string | null;
     chatName?: string;
     chatAvatar?: string;
+    isOnline?: boolean;
+    lastSeen?: string | null;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ 
     chatId, 
     chatName = 'Chat', 
-    chatAvatar 
+    chatAvatar,
+    isOnline = false,
+    lastSeen = null
 }) => {
     const [input, setInput] = useState('');
+    const [replyTo, setReplyTo] = useState<any>(null);
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [editContent, setEditContent] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
     const { user } = useAuth();
     const { 
         messages, 
         sendMessage, 
+        editMessage,
+        deleteMessage,
         sending, 
         isConnected, 
         loading, 
         loadingMore,
-        // hasMore eliminado porque no se usa
         handleScroll,
         scrollContainerRef,
-        totalMessages
+        totalMessages,
+        isUserTyping,
+        emitTyping
     } = useMessages(chatId);
 
-    //  Auto-scroll al final
+    // Auto-scroll al final
     const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
         messagesEndRef.current?.scrollIntoView({ behavior });
     }, []);
@@ -52,10 +63,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         }
     }, [loading, messages, scrollToBottom]);
 
+    // ============================================
+    // ENVIAR MENSAJE (CON REPLY)
+    // ============================================
     const handleSend = async () => {
         if (input.trim() && !sending) {
-            await sendMessage(input);
+            await sendMessage(input, replyTo?.id);
             setInput('');
+            setReplyTo(null);
+            emitTyping(false);
         }
     };
 
@@ -66,20 +82,63 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         }
     };
 
-    // Función para renderizar el estado del mensaje (palomitas)
+    // ============================================
+    // EMITIR "ESCRIBIENDO..."
+    // ============================================
+    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setInput(e.target.value);
+        emitTyping(e.target.value.length > 0);
+    };
+
+    // ============================================
+    // ELIMINAR MENSAJE
+    // ============================================
+    const handleDeleteMessage = async (messageId: string) => {
+        if (window.confirm('¿Eliminar este mensaje?')) {
+            await deleteMessage(messageId);
+        }
+    };
+
+    // ============================================
+    // INICIAR EDICIÓN
+    // ============================================
+    const handleStartEdit = (message: any) => {
+        setEditingMessageId(message.id);
+        setEditContent(message.content);
+    };
+
+    // ============================================
+    // GUARDAR EDICIÓN
+    // ============================================
+    const handleSaveEdit = async () => {
+        if (editingMessageId && editContent.trim()) {
+            await editMessage(editingMessageId, editContent);
+            setEditingMessageId(null);
+            setEditContent('');
+        }
+    };
+
+    // ============================================
+    // RESPONDER A MENSAJE
+    // ============================================
+    const handleReply = (message: any) => {
+        setReplyTo(message);
+        inputRef.current?.focus();
+    };
+
+    // ============================================
+    // RENDERIZAR ESTADO DEL MENSAJE
+    // ============================================
     const renderMessageStatus = (message: any) => {
         if (message.pending) {
             return <span className="text-gray-400 text-xs">⏳ Enviando...</span>;
         }
-        
         if (message.is_read) {
-            return <span className="text-blue-500 text-xs">✅ Leído</span>;
+            return <span className="text-blue-500 text-xs">✅✅ Leído</span>;
         }
-        
         if (message.user_id === user?.id) {
             return <span className="text-gray-400 text-xs">✓ Entregado</span>;
         }
-        
         return null;
     };
 
@@ -161,8 +220,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             <h3 className="font-semibold text-gray-800 dark:text-white">
                                 {chatName}
                             </h3>
-                            <p className="text-xs text-gray-400">
-                                {isConnected ? '🟢 Conectado' : '🔴 Desconectado'}
+                            <p className="text-xs">
+                                {isOnline ? (
+                                    <span className="text-green-500">🟢 En línea</span>
+                                ) : (
+                                    <span className="text-gray-400">
+                                        {formatLastSeen(lastSeen)}
+                                    </span>
+                                )}
                             </p>
                         </div>
                     </div>
@@ -170,17 +235,28 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                         <span className="text-xs text-gray-400">
                             {totalMessages} mensajes
                         </span>
+                        <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
                     </div>
                 </div>
             </div>
 
-            {/* Messages - CON SCROLL DETECTOR */}
+            {/* Messages */}
             <div 
                 ref={scrollContainerRef}
                 onScroll={handleScroll}
                 className="flex-1 overflow-y-auto px-4 py-2 space-y-2"
                 style={{ contain: 'strict' }}
             >
+                {/* Indicador de "escribiendo..." */}
+                {isUserTyping && (
+                    <div className="flex justify-center py-1">
+                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                            <span className="animate-pulse">●</span>
+                            Alguien está escribiendo...
+                        </span>
+                    </div>
+                )}
+
                 {/* Indicador de carga de más mensajes */}
                 {loadingMore && (
                     <div className="flex justify-center py-2">
@@ -204,7 +280,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                         </div>
                     </div>
                 ) : (
-                    // Mensajes agrupados por fecha
                     getGroupedMessages().map((group, groupIndex) => (
                         <div key={groupIndex}>
                             {/* Separador de fecha */}
@@ -217,6 +292,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             {/* Mensajes del grupo */}
                             {group.messages.map((msg) => {
                                 const isOwn = msg.user_id === user?.id;
+                                const isEditing = editingMessageId === msg.id;
                                 
                                 return (
                                     <div
@@ -230,19 +306,56 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                     : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-white shadow-md'
                                             } ${msg.pending ? 'opacity-70' : ''}`}
                                         >
-                                            {/* Nombre del remitente (solo si no es propio) */}
+                                            {/* Nombre del remitente */}
                                             {!isOwn && msg.sender && (
                                                 <div className="text-xs font-semibold text-blue-500 dark:text-blue-400 mb-1">
                                                     {msg.sender.username}
                                                 </div>
                                             )}
                                             
-                                            {/* Contenido del mensaje */}
-                                            <div className="break-words text-sm">
-                                                {msg.content}
-                                            </div>
+                                            {/* Mensaje al que se responde */}
+                                            {msg.reply_to && (
+                                                <div className="text-xs text-gray-400 dark:text-gray-500 mb-1 border-l-2 border-blue-500 pl-2">
+                                                    ↪️ {msg.reply_to}
+                                                </div>
+                                            )}
                                             
-                                            {/* Footer: hora + estado */}
+                                            {/* Contenido del mensaje o edición */}
+                                            {isEditing ? (
+                                                <div className="mt-1">
+                                                    <input
+                                                        type="text"
+                                                        value={editContent}
+                                                        onChange={(e) => setEditContent(e.target.value)}
+                                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit()}
+                                                        className="w-full px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600"
+                                                        autoFocus
+                                                    />
+                                                    <div className="flex gap-1 mt-1">
+                                                        <button
+                                                            onClick={handleSaveEdit}
+                                                            className="px-2 py-0.5 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
+                                                        >
+                                                            Guardar
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setEditingMessageId(null)}
+                                                            className="px-2 py-0.5 bg-gray-300 dark:bg-gray-600 text-xs rounded hover:bg-gray-400"
+                                                        >
+                                                            Cancelar
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="break-words text-sm">
+                                                    {msg.content}
+                                                    {msg.is_edited && (
+                                                        <span className="text-xs text-gray-400 ml-1">(editado)</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
+                                            {/* Footer */}
                                             <div className={`flex items-center justify-end gap-2 mt-1 text-xs ${
                                                 isOwn ? 'text-blue-200' : 'text-gray-400 dark:text-gray-500'
                                             }`}>
@@ -253,8 +366,38 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                     })}
                                                 </span>
                                                 
-                                                {/*  PALOMITAS DE ESTADO */}
-                                                {isOwn && renderMessageStatus(msg)}
+                                                {isOwn && !isEditing && renderMessageStatus(msg)}
+                                                
+                                                {/* Acciones del mensaje */}
+                                                {!msg.is_deleted && !isEditing && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleReply(msg)}
+                                                            className="text-gray-400 hover:text-blue-500 text-xs ml-1"
+                                                            title="Responder"
+                                                        >
+                                                            ↩️
+                                                        </button>
+                                                        {isOwn && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => handleStartEdit(msg)}
+                                                                    className="text-gray-400 hover:text-blue-500 text-xs ml-1"
+                                                                    title="Editar"
+                                                                >
+                                                                    ✏️
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDeleteMessage(msg.id)}
+                                                                    className="text-gray-400 hover:text-red-500 text-xs ml-1"
+                                                                    title="Eliminar"
+                                                                >
+                                                                    🗑️
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -264,16 +407,39 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     ))
                 )}
                 
-                {/*  Elemento para scroll al final */}
+                {/* Elemento para scroll al final */}
                 <div ref={messagesEndRef} />
             </div>
+
+            {/* Indicador de respuesta (Reply) */}
+            {replyTo && (
+                <div className="px-4 pt-2 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+                    <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded-t-lg border-l-4 border-blue-500">
+                        <div className="flex justify-between items-center">
+                            <span className="text-xs font-semibold text-blue-500">
+                                Respondiendo a {replyTo.sender?.username || 'Usuario'}
+                            </span>
+                            <button
+                                onClick={() => setReplyTo(null)}
+                                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                            {replyTo.content}
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* Input */}
             <div className="p-4 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
                 <div className="flex gap-2">
                     <textarea
+                        ref={inputRef}
                         value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={handleInputChange}
                         onKeyDown={handleKeyDown}
                         placeholder="Escribe un mensaje..."
                         className="flex-1 resize-none rounded-lg border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"

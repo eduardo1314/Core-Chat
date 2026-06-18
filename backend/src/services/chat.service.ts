@@ -5,22 +5,17 @@ import { Op } from 'sequelize';
 
 export class ChatService {
     
+    // ============================================
+    // OBTENER TODOS LOS CHATS
+    // ============================================
     async getChats(userId: string): Promise<ChatResponse[]> {
         const chats = await Chat.findAll({
             include: [
                 {
-                    model: User,
-                    as: 'Users',
-                    through: { attributes: [] },
-                    where: { id: userId },
-                    required: true,
-                    attributes: ['id', 'username', 'avatar_url']
-                },
-                {
                     model: Participant,
                     where: { user_id: userId },
                     required: true,
-                    attributes: ['role', 'joined_at', 'last_read_at']
+                    attributes: ['role', 'joined_at', 'last_read_at', 'user_id', 'is_archived']
                 }
             ],
             order: [['updated_at', 'DESC']]
@@ -29,6 +24,7 @@ export class ChatService {
         const results: ChatResponse[] = [];
         
         for (const chat of chats) {
+            // Obtener último mensaje
             const lastMessage = await Message.findOne({
                 where: { chat_id: chat.id, is_deleted: false },
                 order: [['created_at', 'DESC']],
@@ -37,12 +33,20 @@ export class ChatService {
                 ]
             });
             
-            let participants = null;
+            // Obtener participantes (excluyendo al usuario actual para chats privados)
+            let participantsList = null;
             if (chat.type === 'private') {
-                participants = await Participant.findAll({
+                const participants = await Participant.findAll({
                     where: { chat_id: chat.id, user_id: { [Op.ne]: userId } },
                     include: [{ model: User, attributes: ['id', 'username', 'avatar_url'] }]
                 });
+                participantsList = participants.map(p => p.toJSON());
+            } else {
+                const participants = await Participant.findAll({
+                    where: { chat_id: chat.id },
+                    include: [{ model: User, attributes: ['id', 'username', 'avatar_url'] }]
+                });
+                participantsList = participants.map(p => p.toJSON());
             }
             
             const sender = lastMessage?.get('User') as { id: string; username: string } | undefined;
@@ -54,7 +58,7 @@ export class ChatService {
                 created_by: chat.created_by,
                 created_at: chat.created_at,
                 updated_at: chat.updated_at,
-                participants: participants || undefined,
+                Participants: participantsList || undefined,
                 lastMessage: lastMessage ? {
                     content: lastMessage.content,
                     created_at: lastMessage.created_at,
@@ -69,16 +73,115 @@ export class ChatService {
         return results;
     }
     
-    // Obtener chats activos (no archivados)
+    // ============================================
+    // OBTENER CHATS ACTIVOS
+    // ============================================
     async getActiveChats(userId: string): Promise<ChatResponse[]> {
         const participants = await Participant.findAll({
             where: { user_id: userId, is_archived: false },
-            include: [{ model: Chat, as: 'Chat' }],
-            order: [[{ model: Chat, as: 'Chat' }, 'updated_at', 'DESC']]
+            include: [
+                { 
+                    model: Chat,
+                    include: [
+                        {
+                            model: Participant,
+                            include: [
+                                {
+                                    model: User,
+                                    attributes: ['id', 'username', 'avatar_url']
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            order: [[Chat, 'updated_at', 'DESC']]
+
         });
         
         const chats = participants
-            .map(p => p.get('Chat') as Chat | null)
+            .map(p => p.get('Chat'))
+            .filter((c): c is Chat => c !== null);
+        
+        const results: ChatResponse[] = [];
+        
+        for (const chat of chats) {
+            const lastMessage = await Message.findOne({
+                where: { chat_id: chat.id, is_deleted: false },
+                order: [['created_at', 'DESC']],
+                include: [
+                    { model: User, attributes: ['id', 'username'] }
+                ]
+            });
+            
+            // Obtener participantes (excluyendo al usuario actual)
+            let participantsList = null;
+            if (chat.type === 'private') {
+                const participantsData = await Participant.findAll({
+                    where: { chat_id: chat.id, user_id: { [Op.ne]: userId } },
+                    include: [{ model: User, attributes: ['id', 'username', 'avatar_url'] }]
+                });
+                participantsList = participantsData.map(p => p.toJSON());
+            } else {
+                const participantsData = await Participant.findAll({
+                    where: { chat_id: chat.id },
+                    include: [{ model: User, attributes: ['id', 'username', 'avatar_url'] }]
+                });
+                participantsList = participantsData.map(p => p.toJSON());
+            }
+            
+            const sender = lastMessage?.get('User') as { id: string; username: string } | undefined;
+
+            results.push({
+                id: chat.id,
+                name: chat.name,
+                type: chat.type,
+                created_by: chat.created_by,
+                created_at: chat.created_at,
+                updated_at: chat.updated_at,
+                Participants: participantsList || undefined,
+                lastMessage: lastMessage ? {
+                    content: lastMessage.content,
+                    created_at: lastMessage.created_at,
+                    sender: {
+                        id: sender?.id || '',
+                        username: sender?.username || ''
+                    }
+                } : undefined
+            });
+        }
+        
+        return results;
+    }
+    
+    // ============================================
+    // OBTENER CHATS ARCHIVADOS
+    // ============================================
+    async getArchivedChats(userId: string): Promise<ChatResponse[]> {
+        const participants = await Participant.findAll({
+            where: { user_id: userId, is_archived: true },
+            include: [
+                { 
+                    model: Chat,
+                    include: [
+                        {
+                            model: Participant,
+                            include: [
+                                {
+                                    model: User,
+                                    attributes: ['id', 'username', 'avatar_url']
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ],
+            order: [[Chat, 'updated_at', 'DESC']]
+
+        });
+        
+        const chats = participants
+            .map(p => p.get('Chat'))
             .filter((c): c is Chat => c !== null);
         
         const results: ChatResponse[] = [];
@@ -94,10 +197,11 @@ export class ChatService {
             
             let participantsList = null;
             if (chat.type === 'private') {
-                participantsList = await Participant.findAll({
+                const participantsData = await Participant.findAll({
                     where: { chat_id: chat.id, user_id: { [Op.ne]: userId } },
                     include: [{ model: User, attributes: ['id', 'username', 'avatar_url'] }]
                 });
+                participantsList = participantsData.map(p => p.toJSON());
             }
             
             const sender = lastMessage?.get('User') as { id: string; username: string } | undefined;
@@ -109,7 +213,7 @@ export class ChatService {
                 created_by: chat.created_by,
                 created_at: chat.created_at,
                 updated_at: chat.updated_at,
-                participants: participantsList || undefined,
+                Participants: participantsList || undefined,
                 lastMessage: lastMessage ? {
                     content: lastMessage.content,
                     created_at: lastMessage.created_at,
@@ -124,53 +228,9 @@ export class ChatService {
         return results;
     }
     
-    // Obtener chats archivados
-    async getArchivedChats(userId: string): Promise<ChatResponse[]> {
-        const participants = await Participant.findAll({
-            where: { user_id: userId, is_archived: true },
-            include: [{ model: Chat, as: 'Chat' }],
-            order: [[{ model: Chat, as: 'Chat' }, 'updated_at', 'DESC']]
-        });
-        
-        const chats = participants
-            .map(p => p.get('Chat') as Chat | null)
-            .filter((c): c is Chat => c !== null);
-        
-        const results: ChatResponse[] = [];
-        
-        for (const chat of chats) {
-            const lastMessage = await Message.findOne({
-                where: { chat_id: chat.id, is_deleted: false },
-                order: [['created_at', 'DESC']],
-                include: [
-                    { model: User, attributes: ['id', 'username'] }
-                ]
-            });
-            
-            const sender = lastMessage?.get('User') as { id: string; username: string } | undefined;
-
-            results.push({
-                id: chat.id,
-                name: chat.name,
-                type: chat.type,
-                created_by: chat.created_by,
-                created_at: chat.created_at,
-                updated_at: chat.updated_at,
-                lastMessage: lastMessage ? {
-                    content: lastMessage.content,
-                    created_at: lastMessage.created_at,
-                    sender: {
-                        id: sender?.id || '',
-                        username: sender?.username || ''
-                    }
-                } : undefined
-            });
-        }
-        
-        return results;
-    }
-    
-    // Archivar un chat
+    // ============================================
+    // ARCHIVAR CHAT
+    // ============================================
     async archiveChat(chatId: string, userId: string): Promise<void> {
         const participant = await Participant.findOne({
             where: { chat_id: chatId, user_id: userId }
@@ -186,7 +246,9 @@ export class ChatService {
         });
     }
     
-    // Desarchivar un chat
+    // ============================================
+    // DESARCHIVAR CHAT
+    // ============================================
     async unarchiveChat(chatId: string, userId: string): Promise<void> {
         const participant = await Participant.findOne({
             where: { chat_id: chatId, user_id: userId }
@@ -202,6 +264,9 @@ export class ChatService {
         });
     }
     
+    // ============================================
+    // CREAR CHAT
+    // ============================================
     async createChat(data: CreateChatData): Promise<ChatResponse> {
         if (data.type === 'private') {
             const existingChat = await this.findPrivateChat(data.createdBy, data.participantIds[0]);
@@ -211,9 +276,20 @@ export class ChatService {
         }
         
         const chatId = uuidv4();
+        
+        let chatName = data.name;
+        if (data.type === 'private' && !chatName && data.participantIds.length === 1) {
+            const otherUser = await User.findByPk(data.participantIds[0], {
+                attributes: ['username']
+            });
+            if (otherUser) {
+                chatName = otherUser.username;
+            }
+        }
+        
         const chat = await Chat.create({
             id: chatId,
-              name: data.name || null, 
+            name: chatName || null, 
             type: data.type,
             created_by: data.createdBy,
             is_archived: false
@@ -227,6 +303,7 @@ export class ChatService {
                 user_id: pid,
                 role,
                 last_read_at: new Date(),
+                joined_at: new Date(),
                 is_archived: false,
                 archived_at: null
             };
@@ -237,14 +314,20 @@ export class ChatService {
         return this.getChatById(chatId);
     }
     
+    // ============================================
+    // OBTENER CHAT POR ID
+    // ============================================
     async getChatById(chatId: string): Promise<ChatResponse> {
         const chat = await Chat.findByPk(chatId, {
             include: [
                 {
-                    model: User,
-                    as: 'Users',
-                    through: { attributes: [] },
-                    attributes: ['id', 'username', 'avatar_url']
+                    model: Participant,
+                    include: [
+                        {
+                            model: User,
+                            attributes: ['id', 'username', 'avatar_url']
+                        }
+                    ]
                 }
             ]
         });
@@ -253,6 +336,23 @@ export class ChatService {
             throw new Error('Chat no encontrado');
         }
         
+        const lastMessage = await Message.findOne({
+            where: { chat_id: chat.id, is_deleted: false },
+            order: [['created_at', 'DESC']],
+            include: [
+                { model: User, attributes: ['id', 'username'] }
+            ]
+        });
+        
+        const sender = lastMessage?.get('User') as { id: string; username: string } | undefined;
+        const participants = chat.get('Participants') || [];
+        
+        // Formatear participantes
+       
+const formattedParticipants = Array.isArray(participants) 
+    ? participants.map((p: any) => p.toJSON ? p.toJSON() : p) 
+    : [];
+
         return {
             id: chat.id,
             name: chat.name,
@@ -260,10 +360,21 @@ export class ChatService {
             created_by: chat.created_by,
             created_at: chat.created_at,
             updated_at: chat.updated_at,
-            participants: chat.get('Users') as any[]
+            Participants: formattedParticipants || undefined,
+            lastMessage: lastMessage ? {
+                content: lastMessage.content,
+                created_at: lastMessage.created_at,
+                sender: {
+                    id: sender?.id || '',
+                    username: sender?.username || ''
+                }
+            } : undefined
         };
     }
     
+    // ============================================
+    // BUSCAR CHAT PRIVADO
+    // ============================================
     async findPrivateChat(user1Id: string, user2Id: string): Promise<ChatResponse | null> {
         const participants1 = await Participant.findAll({
             where: { user_id: user1Id },
@@ -292,6 +403,9 @@ export class ChatService {
         return this.getChatById(chat.id);
     }
     
+    // ============================================
+    // AGREGAR PARTICIPANTE
+    // ============================================
     async addParticipant(chatId: string, userId: string, addedBy: string): Promise<void> {
         const chat = await Chat.findByPk(chatId);
         
@@ -313,11 +427,15 @@ export class ChatService {
             user_id: userId,
             role: 'member',
             last_read_at: new Date(),
+            joined_at: new Date(),
             is_archived: false,
             archived_at: null
         });
     }
     
+    // ============================================
+    // ELIMINAR PARTICIPANTE
+    // ============================================
     async removeParticipant(chatId: string, userId: string, removedBy: string): Promise<void> {
         const chat = await Chat.findByPk(chatId);
         
@@ -338,29 +456,22 @@ export class ChatService {
         });
     }
 
-    // Eliminar un chat completamente (solo el usuario actual)
-   async deleteChat(chatId: string, userId: string): Promise<void> {
-    // Verificar que el usuario es participante
-    const participant = await Participant.findOne({
-        where: { chat_id: chatId, user_id: userId }
-    });
-    
-    if (!participant) {
-        throw new Error('No eres participante de este chat');
+    // ============================================
+    // ELIMINAR CHAT
+    // ============================================
+    async deleteChat(chatId: string, userId: string): Promise<void> {
+        const participant = await Participant.findOne({
+            where: { chat_id: chatId, user_id: userId }
+        });
+        
+        if (!participant) {
+            throw new Error('No eres participante de este chat');
+        }
+        
+        await Participant.destroy({ where: { chat_id: chatId } });
+        await Message.destroy({ where: { chat_id: chatId } });
+        await Chat.destroy({ where: { id: chatId } });
     }
-    
-    // Eliminar participantes
-    await Participant.destroy({ where: { chat_id: chatId } });
-    
-    // Eliminar mensajes
-    await Message.destroy({ where: { chat_id: chatId } });
-    
-    // Eliminar chat
-    await Chat.destroy({ where: { id: chatId } });
-}
-
-
-    
 };
 
 export const chatService = new ChatService();

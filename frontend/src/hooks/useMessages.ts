@@ -1,4 +1,3 @@
-// src/hooks/useMessages.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSocket } from './useSocket';
 import { useAuth } from './useAuth';
@@ -6,11 +5,14 @@ import {
     getMessagesService,
     getLatestMessagesService,
     sendMessageService,
-    markAsReadService
+    markAsReadService,
+    editMessageService,      
+    deleteMessageService      
 } from '../services/messages.service';
 import { Message } from '../types';
+import { useChats } from './useChats';
 
-// ✅ Configuración
+// Configuración
 const PAGE_SIZE = 30;
 const INITIAL_LOAD = 20;
 
@@ -22,13 +24,17 @@ interface UseMessagesReturn {
     isConnected: boolean;
     hasMore: boolean;
     totalMessages: number;
-    sendMessage: (content: string) => Promise<void>;
+    sendMessage: (content: string, replyTo?: string) => Promise<void>;  
+    editMessage: (messageId: string, newContent: string) => Promise<void>; 
+    deleteMessage: (messageId: string) => Promise<void>;                   
     loadMoreMessages: () => Promise<void>;
     loadInitialMessages: () => Promise<void>;
     handleScroll: (e: React.UIEvent<HTMLDivElement>) => void;
-    scrollContainerRef: React.RefObject<HTMLDivElement | null>; 
+    scrollContainerRef: React.RefObject<HTMLDivElement | null>;
     markAsRead: (messageId?: string) => Promise<void>;
     clearMessages: () => void;
+    isUserTyping: boolean;    
+    emitTyping: (isTyping: boolean) => void; 
 }
 
 export const useMessages = (chatId: string | null): UseMessagesReturn => {
@@ -39,6 +45,7 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
     const [hasMore, setHasMore] = useState(true);
     const [totalMessages, setTotalMessages] = useState(0);
     const [page, setPage] = useState(1);
+    const [isUserTyping, setIsUserTyping] = useState(false); 
     
     const { user } = useAuth();
     const { 
@@ -49,16 +56,27 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         onNewMessage, 
         offNewMessage,
         onMessageSent,
-        offMessageSent
+        offMessageSent,
+        //eventos de socket
+        onUserTyping,
+        offUserTyping,
+        onMessageDeleted,
+        offMessageDeleted,
+        onMessageEdited,
+        offMessageEdited,
+        emitTyping: emitTypingSocket
     } = useSocket();
     
-    // Referencias
+    const { updateChat } = useChats();
+    
     const messageIdsRef = useRef<Set<string>>(new Set());
-    const pendingMessagesRef = useRef<Map<string, Message>>(new Map());
+    const pendingMessagesRef = useRef<Map<string, any>>(new Map());
     const isLoadingRef = useRef(false);
-    const scrollContainerRef = useRef<HTMLDivElement | null>(null); 
+    const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
-    //  Cargar mensajes iniciales (últimos 20)
+    // ============================================
+    // 1. CARGAR MENSAJES INICIALES
+    // ============================================
     const loadInitialMessages = useCallback(async () => {
         if (!chatId || isLoadingRef.current) return;
         
@@ -79,7 +97,6 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
                 setTotalMessages(newMessages.length);
                 setPage(1);
                 
-                //  Marcar mensajes como leídos
                 if (newMessages.length > 0) {
                     await markAsReadService(chatId);
                 }
@@ -92,7 +109,9 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         }
     }, [chatId]);
 
-    //  Cargar más mensajes (paginación hacia arriba)
+    // ============================================
+    // 2. CARGAR MÁS MENSAJES
+    // ============================================
     const loadMoreMessages = useCallback(async () => {
         if (!chatId || !hasMore || loadingMore || isLoadingRef.current) return;
         
@@ -108,7 +127,6 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
                 const newMessages = response.data.data || [];
                 console.log(`✅ ${newMessages.length} mensajes adicionales cargados`);
                 
-                // Prevenir duplicados
                 const uniqueMessages = newMessages.filter(
                     (msg: Message) => !messageIdsRef.current.has(msg.id)
                 );
@@ -132,21 +150,21 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         }
     }, [chatId, page, hasMore, loadingMore]);
 
-    //  Unirse al chat y cargar mensajes
+    // ============================================
+    // 3. UNIRSE AL CHAT
+    // ============================================
     useEffect(() => {
         if (!chatId || !isConnected) return;
 
         console.log(`📢 Uniéndose al chat: ${chatId}`);
         joinChat(chatId);
         
-        //  Resetear estado
         setMessages([]);
         messageIdsRef.current.clear();
         pendingMessagesRef.current.clear();
         setPage(1);
         setHasMore(true);
         
-        //  Cargar mensajes
         loadInitialMessages();
 
         return () => {
@@ -155,21 +173,20 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         };
     }, [chatId, isConnected, joinChat, leaveChat, loadInitialMessages]);
 
-    //Escuchar nuevos mensajes (WebSocket)
+    // ============================================
+    // 4. ESCUCHAR NUEVOS MENSAJES
+    // ============================================
     useEffect(() => {
         if (!chatId || !isConnected) return;
 
         const handleNewMessage = (message: Message) => {
-            //  Verificar que el mensaje sea para este chat
             if (message.chat_id !== chatId) return;
             
-            // Prevenir duplicados
             if (messageIdsRef.current.has(message.id)) {
                 console.log('⚠️ Mensaje duplicado ignorado:', message.id);
                 return;
             }
 
-            // Si es mensaje temporal, actualizarlo
             if (message.tempId && pendingMessagesRef.current.has(message.tempId)) {
                 console.log('🔄 Actualizando mensaje temporal:', message.tempId);
                 setMessages(prev => {
@@ -181,17 +198,26 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
                 pendingMessagesRef.current.delete(message.tempId);
                 messageIdsRef.current.add(message.id);
                 
-                //  Marcar como leído
                 markAsReadService(chatId, message.id);
                 return;
             }
 
-            //  Agregar nuevo mensaje
             console.log('📨 Nuevo mensaje recibido:', message.id);
             messageIdsRef.current.add(message.id);
             setMessages(prev => [...prev, message]);
             
-            //  Marcar como leído
+            updateChat(chatId, {
+                lastMessage: {
+                    content: message.content,
+                    created_at: message.created_at,
+                    sender: {
+                        id: message.user_id,
+                        username: message.sender?.username || 'Usuario'
+                    }
+                },
+                updated_at: message.created_at
+            });
+            
             markAsReadService(chatId, message.id);
         };
 
@@ -200,17 +226,23 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         return () => {
             offNewMessage(handleNewMessage);
         };
-    }, [chatId, isConnected, onNewMessage, offNewMessage]);
+    }, [chatId, isConnected, onNewMessage, offNewMessage, updateChat]);
 
-    //  Confirmación de mensaje enviado
+    // ============================================
+    // 5. CONFIRMACIÓN DE MENSAJE ENVIADO
+    // ============================================
     useEffect(() => {
-        if (!isConnected) return;
+        console.log('📝 Registrando listener message-sent');
 
         const handleMessageSent = (message: Message) => {
-            console.log('Mensaje enviado confirmado:', message.id);
+            console.log('✅ Mensaje enviado confirmado por WebSocket:', message.id);
             
-            // Actualizar mensaje temporal
             if (message.tempId && pendingMessagesRef.current.has(message.tempId)) {
+                const pending = pendingMessagesRef.current.get(message.tempId);
+                if (pending?._cleanup) {
+                    pending._cleanup();
+                }
+
                 setMessages(prev => {
                     const updated = prev.map(msg => 
                         msg.tempId === message.tempId ? { ...message, pending: false } : msg
@@ -227,14 +259,136 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         return () => {
             offMessageSent(handleMessageSent);
         };
-    }, [isConnected, onMessageSent, offMessageSent]);
+    }, [onMessageSent, offMessageSent]);
 
-    // Enviar mensaje
-    const sendMessageHandler = useCallback(async (content: string) => {
+    // ============================================
+    // 6.  ESCUCHAR MENSAJE ELIMINADO
+    // ============================================
+    useEffect(() => {
+        if (!chatId || !isConnected) return;
+
+        const handleMessageDeleted = (data: { chatId: string; messageId: string }) => {
+            if (data.chatId !== chatId) return;
+            console.log('🗑️ Mensaje eliminado:', data.messageId);
+            setMessages(prev => prev.filter(msg => msg.id !== data.messageId));
+            messageIdsRef.current.delete(data.messageId);
+        };
+
+        onMessageDeleted(handleMessageDeleted);
+
+        return () => {
+            offMessageDeleted(handleMessageDeleted);
+        };
+    }, [chatId, isConnected, onMessageDeleted, offMessageDeleted]);
+
+    // ============================================
+    // 7.  ESCUCHAR MENSAJE EDITADO
+    // ============================================
+    useEffect(() => {
+        if (!chatId || !isConnected) return;
+
+        const handleMessageEdited = (message: Message) => {
+            if (message.chat_id !== chatId) return;
+            console.log('✏️ Mensaje editado:', message.id);
+            setMessages(prev => 
+                prev.map(msg => 
+                    msg.id === message.id ? { ...message, is_edited: true } : msg
+                )
+            );
+        };
+
+        onMessageEdited(handleMessageEdited);
+
+        return () => {
+            offMessageEdited(handleMessageEdited);
+        };
+    }, [chatId, isConnected, onMessageEdited, offMessageEdited]);
+
+    // ============================================
+    // 8.  ESCUCHAR "ESCRIBIENDO..."
+    // ============================================
+    useEffect(() => {
+        if (!chatId || !isConnected) return;
+
+        let typingTimeout: ReturnType<typeof setTimeout>;
+
+        const handleUserTyping = (data: any) => {
+            if (data.chatId !== chatId || data.userId === user?.id) return;
+            
+            setIsUserTyping(true);
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                setIsUserTyping(false);
+            }, 3000);
+        };
+
+        onUserTyping(handleUserTyping);
+
+        return () => {
+            clearTimeout(typingTimeout);
+            offUserTyping(handleUserTyping);
+        };
+    }, [chatId, isConnected, user, onUserTyping, offUserTyping]);
+
+    // ============================================
+    // 9.  EMITIR "ESCRIBIENDO..."
+    // ============================================
+    const emitTypingHandler = useCallback((isTyping: boolean) => {
+        if (!chatId || !isConnected) return;
+        emitTypingSocket(chatId, isTyping);
+    }, [chatId, isConnected, emitTypingSocket]);
+
+   
+
+    // ============================================
+// 10.  EDITAR MENSAJE (CORREGIDO)
+// ============================================
+const editMessageHandler = useCallback(async (messageId: string, newContent: string) => {
+    if (!chatId || !newContent.trim()) return;
+    try {
+        const response = await editMessageService(messageId, newContent.trim());
+        if (response.success && response.data) {
+            setMessages(prev => 
+                prev.map(msg => {
+                    if (msg.id === messageId && response.data) {
+                        return {
+                            ...response.data,
+                            is_edited: true
+                        } as Message;
+                    }
+                    return msg;
+                })
+            );
+        }
+    } catch (error) {
+        console.error('❌ Error al editar mensaje:', error);
+    }
+}, [chatId]);
+
+    // ============================================
+    // 11.  ELIMINAR MENSAJE
+    // ============================================
+    const deleteMessageHandler = useCallback(async (messageId: string) => {
+        if (!chatId) return;
+        try {
+            const response = await deleteMessageService(messageId);
+            if (response.success) {
+                setMessages(prev => prev.filter(msg => msg.id !== messageId));
+                messageIdsRef.current.delete(messageId);
+            }
+        } catch (error) {
+            console.error('❌ Error al eliminar mensaje:', error);
+        }
+    }, [chatId]);
+
+    // ============================================
+    // 12.  ENVIAR MENSAJE (CON REPLY)
+    // ============================================
+    const sendMessageHandler = useCallback(async (content: string, replyTo?: string) => {
         if (!chatId || !content.trim() || sending || !user?.id) return;
 
         const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-        const tempMessage: Message = {
+        const tempMessage: any = {
             id: tempId,
             tempId,
             chat_id: chatId,
@@ -242,41 +396,78 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
             user_id: user.id,
             created_at: new Date().toISOString(),
             pending: true,
+            reply_to: replyTo || null,
             sender: {
                 id: user.id,
                 username: user.username || 'Tú',
                 avatar_url: user.avatar_url || null
             }
-        } as Message;
+        };
 
-        //  Agregar mensaje temporal (optimista)
         setMessages(prev => [...prev, tempMessage]);
         pendingMessagesRef.current.set(tempId, tempMessage);
         setSending(true);
 
         try {
-            // Enviar por WebSocket (primario)
-            sendMessageSocket(
-                chatId, 
-                content.trim(), 
-                user.id, 
-                user.username || 'Usuario',
-                tempId
-            );
+            const response = await sendMessageService(chatId, content.trim(), 'text', replyTo);
             
-            //  También enviar por HTTP (respaldo)
-            await sendMessageService(chatId, content.trim(), 'text');
+            if (response.success && response.data) {
+                console.log('✅ Mensaje guardado en BD:', response.data.id);
+                
+                setMessages(prev => {
+                    return prev.map(msg => {
+                        if (msg.tempId === tempId && response.data) {
+                            return {
+                                ...response.data,
+                                pending: false
+                            } as Message;
+                        }
+                        return msg;
+                    });
+                });
+                pendingMessagesRef.current.delete(tempId);
+                if (response.data.id) {
+                    messageIdsRef.current.add(response.data.id);
+                }
+                
+                updateChat(chatId, {
+                    lastMessage: {
+                        content: content.trim(),
+                        created_at: new Date().toISOString(),
+                        sender: {
+                            id: user.id,
+                            username: user.username || 'Tú'
+                        }
+                    },
+                    updated_at: new Date().toISOString()
+                });
+                
+                if (isConnected) {
+                    sendMessageSocket(
+                        chatId, 
+                        content.trim(), 
+                        user.id, 
+                        user.username || 'Usuario',
+                        tempId
+                    );
+                }
+            } else {
+                console.error('❌ Error al guardar mensaje en BD');
+                setMessages(prev => prev.filter(msg => msg.id !== tempId));
+                pendingMessagesRef.current.delete(tempId);
+            }
         } catch (error) {
             console.error('❌ Error al enviar mensaje:', error);
-            //  Remover mensaje temporal en caso de error
             setMessages(prev => prev.filter(msg => msg.id !== tempId));
             pendingMessagesRef.current.delete(tempId);
         } finally {
             setSending(false);
         }
-    }, [chatId, sending, user, sendMessageSocket]);
+    }, [chatId, sending, user, sendMessageSocket, isConnected, updateChat]);
 
-    //  Manejador de scroll para lazy loading
+    // ============================================
+    // 13. SCROLL PARA LAZY LOADING
+    // ============================================
     const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
         const target = e.target as HTMLDivElement;
         if (target.scrollTop === 0 && hasMore && !loadingMore && !isLoadingRef.current) {
@@ -285,7 +476,9 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         }
     }, [hasMore, loadingMore, loadMoreMessages]);
 
-    //  Marcar como leído manualmente
+    // ============================================
+    // 14. MARCAR COMO LEÍDO
+    // ============================================
     const markAsReadHandler = useCallback(async (messageId?: string) => {
         if (!chatId) return;
         try {
@@ -295,7 +488,9 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         }
     }, [chatId]);
 
-    //  Limpiar mensajes
+    // ============================================
+    // 15. LIMPIAR MENSAJES
+    // ============================================
     const clearMessages = useCallback(() => {
         setMessages([]);
         messageIdsRef.current.clear();
@@ -311,11 +506,15 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         hasMore,
         totalMessages,
         sendMessage: sendMessageHandler,
+        editMessage: editMessageHandler,      
+        deleteMessage: deleteMessageHandler,  
         loadMoreMessages,
         loadInitialMessages,
         handleScroll,
         scrollContainerRef,
         markAsRead: markAsReadHandler,
-        clearMessages
+        clearMessages,
+        isUserTyping,                         
+        emitTyping: emitTypingHandler,        
     };
 };
