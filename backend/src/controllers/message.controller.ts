@@ -155,7 +155,7 @@ export const deleteMessage = async (req: any, res: Response) => {
 };
 
 // ============================================
-// 6. MARCAR COMO LEÍDO
+// 6. MARCAR COMO LEÍDO 
 // ============================================
 export const markAsRead = async (req: any, res: Response) => {
     try {
@@ -167,9 +167,16 @@ export const markAsRead = async (req: any, res: Response) => {
         //  Emitir por WebSocket
         const io = req.app.get('io');
         if (io) {
+            //  Notificar que los mensajes se leyeron
             io.to(chatId).emit('messages-read', {
                 chatId,
                 userId: userId
+            });
+            
+            //  Actualizar no leídos 
+            io.to(chatId).emit('unread-update', {
+                chatId,
+                count: 0  // ← Después de marcar como leídos, el conteo es 0
             });
         }
         
@@ -179,7 +186,6 @@ export const markAsRead = async (req: any, res: Response) => {
         res.status(400).json({ success: false, error: error.message });
     }
 };
-
 // ============================================
 // 7. OBTENER CONTEO DE NO LEÍDOS (UN CHAT)
 // ============================================

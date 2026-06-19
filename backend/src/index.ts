@@ -9,6 +9,7 @@ import logger from './utils/logger';
 import { connectDB } from './database/config';
 import { Message, Chat, Participant, User } from './models';
 import { v4 as uuidv4 } from 'uuid';
+import { Op } from 'sequelize'; 
 
 const PORT = config.port; 
 const NODE_ENV = config.nodeEnv;
@@ -41,6 +42,42 @@ async function startServer() {
         const connectedUsers = new Map<string, string>(); // socketId -> userId
         const userSockets = new Map<string, Set<string>>(); // userId -> Set de socketIds
         
+        //  Función para emitir actualización de no leídos a un usuario específico
+        const emitUnreadUpdate = async (chatId: string, userId: string) => {
+            try {
+                // Contar mensajes no leídos para este usuario en este chat
+                const participant = await Participant.findOne({
+                    where: { chat_id: chatId, user_id: userId }
+                });
+                
+                if (!participant) return;
+                
+                const lastReadAt = participant.last_read_at || new Date(0);
+                
+                const unreadCount = await Message.count({
+                    where: {
+                        chat_id: chatId,
+                        user_id: { [Op.ne]: userId },
+                        is_read: false,
+                        created_at: { [Op.gt]: lastReadAt }
+                    }
+                });
+                
+                // Emitir al usuario específico usando sus sockets
+                const userSocketIds = userSockets.get(userId);
+                if (userSocketIds) {
+                    for (const socketId of userSocketIds) {
+                        io.to(socketId).emit('unread-update', {
+                            chatId,
+                            count: unreadCount
+                        });
+                    }
+                }
+            } catch (error) {
+                logger.error('❌ Error al emitir actualización de no leídos:', error);
+            }
+        };
+
         // Manejo de conexiones Socket.IO
         io.on('connection', (socket) => {
             logger.info(`🔌 Usuario conectado: ${socket.id}`);
@@ -63,7 +100,7 @@ async function startServer() {
                 }
                 userSockets.get(userId)!.add(socket.id);
                 
-                //  Actualizar estado en la base de datos
+                // Actualizar estado en la base de datos
                 try {
                     await User.update(
                         { 
@@ -135,7 +172,7 @@ async function startServer() {
             });
             
             // ==========================================
-            // 4. ENVIAR MENSAJE
+            // 4. ENVIAR MENSAJE (CON NO LEÍDOS EN TIEMPO REAL)
             // ==========================================
             socket.on('send-message', async (data) => {
                 try {
@@ -216,7 +253,20 @@ async function startServer() {
                         username: username
                     });
                     
-                    logger.info(` Mensaje emitido al chat ${chatId} (ID: ${message.id})`);
+                    // ==========================================
+                    // EMITIR ACTUALIZACIÓN DE NO LEÍDOS
+                    // ==========================================
+                    // Obtener todos los participantes del chat (excepto el emisor)
+                    const participants = await Participant.findAll({
+                        where: { chat_id: chatId, user_id: { [Op.ne]: userId } }
+                    });
+                    
+                    // Para cada participante, emitir actualización de no leídos
+                    for (const p of participants) {
+                        await emitUnreadUpdate(chatId, p.user_id);
+                    }
+                    
+                    logger.info(`✅ Mensaje emitido al chat ${chatId} (ID: ${message.id})`);
                     
                 } catch (error) {
                     logger.error('❌ Error al guardar mensaje:', error);
@@ -281,6 +331,15 @@ async function startServer() {
                         timestamp: new Date().toISOString()
                     });
                     
+                    //  Actualizar no leídos después de eliminar mensaje
+                    const participants = await Participant.findAll({
+                        where: { chat_id: chatId, user_id: { [Op.ne]: socket.data.userId } }
+                    });
+                    
+                    for (const p of participants) {
+                        await emitUnreadUpdate(chatId, p.user_id);
+                    }
+                    
                     logger.info(`🗑️ Mensaje ${messageId} eliminado del chat ${chatId}`);
                 } catch (error) {
                     logger.error('Error al eliminar mensaje:', error);
@@ -338,7 +397,7 @@ async function startServer() {
                 logger.info(`🔌 Usuario desconectado: ${socket.id} (Usuario: ${userId || 'unknown'})`);
                 
                 if (userId) {
-                    //  Verificar si el usuario tiene otros sockets activos
+                    // Verificar si el usuario tiene otros sockets activos
                     if (userSockets.has(userId)) {
                         userSockets.get(userId)!.delete(socket.id);
                         
@@ -380,6 +439,51 @@ async function startServer() {
                     timestamp: new Date().toISOString()
                 });
             });
+        });
+        
+        // ==========================================
+        //  Endpoint para obtener no leídos de un usuario
+        // ==========================================
+        app.get('/api/unread/:userId', async (req, res) => {
+            try {
+                const { userId } = req.params;
+                const { chatId } = req.query;
+                
+                if (chatId) {
+                    const count = await Message.count({
+                        where: {
+                            chat_id: chatId as string,
+                            user_id: { [Op.ne]: userId },
+                            is_read: false
+                        }
+                    });
+                    res.json({ success: true, count });
+                } else {
+                    // Obtener todos los no leídos del usuario
+                    const participants = await Participant.findAll({
+                        where: { user_id: userId },
+                        attributes: ['chat_id', 'last_read_at']
+                    });
+                    
+                    let totalUnread = 0;
+                    for (const p of participants) {
+                        const lastReadAt = p.last_read_at || new Date(0);
+                        const count = await Message.count({
+                            where: {
+                                chat_id: p.chat_id,
+                                user_id: { [Op.ne]: userId },
+                                is_read: false,
+                                created_at: { [Op.gt]: lastReadAt }
+                            }
+                        });
+                        totalUnread += count;
+                    }
+                    
+                    res.json({ success: true, totalUnread });
+                }
+            } catch (error) {
+                res.status(500).json({ success: false, error: 'Error al obtener no leídos' });
+            }
         });
         
         // ==========================================

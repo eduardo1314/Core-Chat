@@ -9,6 +9,7 @@ interface ChatWindowProps {
     chatAvatar?: string;
     isOnline?: boolean;
     lastSeen?: string | null;
+    onClose?: () => void;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ 
@@ -16,12 +17,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     chatName = 'Chat', 
     chatAvatar,
     isOnline = false,
-    lastSeen = null
+    lastSeen = null,
+    onClose,
 }) => {
     const [input, setInput] = useState('');
     const [replyTo, setReplyTo] = useState<any>(null);
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
+    const [showMenu, setShowMenu] = useState(false); 
+    const menuRef = useRef<HTMLDivElement>(null); 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const { user } = useAuth();
@@ -31,15 +35,24 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         editMessage,
         deleteMessage,
         sending, 
-        isConnected, 
         loading, 
         loadingMore,
         handleScroll,
         scrollContainerRef,
-        totalMessages,
         isUserTyping,
         emitTyping
     } = useMessages(chatId);
+
+    // Cerrar menú al hacer clic fuera
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setShowMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Auto-scroll al final
     const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
@@ -201,7 +214,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
     return (
         <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900">
-            {/* Header */}
+            {/* ============================================
+                HEADER CON BOTÓN DE 3 PUNTOS (⋮)
+                ============================================ */}
             <div className="px-6 py-4 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -231,11 +246,82 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             </p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400">
-                            {totalMessages} mensajes
-                        </span>
-                        <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+
+                    {/*  BOTÓN DE 3 PUNTOS CON MENÚ */}
+                    <div className="relative" ref={menuRef}>
+                        <button
+                            onClick={() => setShowMenu(!showMenu)}
+                            className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                            title="Opciones"
+                        >
+                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                                <circle cx="12" cy="5" r="2" />
+                                <circle cx="12" cy="12" r="2" />
+                                <circle cx="12" cy="19" r="2" />
+                            </svg>
+                        </button>
+
+                        {/* Menú desplegable */}
+                        {showMenu && (
+                            <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 overflow-hidden">
+                                {/* Opción: Cerrar chat */}
+                                <button
+                                    onClick={() => {
+                                        setShowMenu(false);
+                                        onClose?.();
+                                    }}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition"
+                                >
+                                    <span className="text-lg">✕</span>
+                                    Cerrar chat
+                                </button>
+
+                                {/* Separador */}
+                                <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+
+                                {/* Opción: Ver perfil */}
+                                <button
+                                    onClick={() => {
+                                        setShowMenu(false);
+                                        // Aquí puedes abrir el perfil del amigo
+                                    }}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition"
+                                >
+                                    <span className="text-lg">👤</span>
+                                    Ver perfil
+                                </button>
+
+                                {/* Opción: Información del chat */}
+                                <button
+                                    onClick={() => {
+                                        setShowMenu(false);
+                                        // Aquí puedes mostrar información del chat
+                                    }}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition"
+                                >
+                                    <span className="text-lg">📋</span>
+                                    Información
+                                </button>
+
+                                {/* Separador */}
+                                <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+
+                                {/* Opción: Eliminar chat */}
+                                <button
+                                    onClick={() => {
+                                        setShowMenu(false);
+                                        if (window.confirm(`¿Estás seguro de que quieres eliminar el chat con ${chatName}?`)) {
+                                            // Aquí puedes eliminar el chat
+                                            console.log('Eliminar chat:', chatId);
+                                        }
+                                    }}
+                                    className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition"
+                                >
+                                    <span className="text-lg">🗑️</span>
+                                    Eliminar chat
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -252,7 +338,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     <div className="flex justify-center py-1">
                         <span className="text-xs text-gray-400 flex items-center gap-1">
                             <span className="animate-pulse">●</span>
-                            Alguien está escribiendo...
+                            escribiendo...
                         </span>
                     </div>
                 )}

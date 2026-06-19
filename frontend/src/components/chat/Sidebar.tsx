@@ -8,6 +8,7 @@ import { getUnreadCountService, getTotalUnreadCountService } from '../../service
 import FriendMenu from '../common/FriendMenu';
 import { formatLastSeen } from '../../../utils/formatLastSeen';
 import { Chat } from "../../types";
+import { useSocket } from '../../hooks/useSocket';
 
 // ============================================
 // TIPOS E INTERFACES
@@ -15,12 +16,13 @@ import { Chat } from "../../types";
 interface SidebarProps {
     onSelectChat: (chatId: string | null, chatName?: string, isOnline?: boolean, lastSeen?: string | null) => void;
     selectedChatId: string | null;
+    onClearUnread?: (chatId: string) => void;
 }
 
 // ============================================
 // COMPONENTE PRINCIPAL
 // ============================================
-const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
+const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClearUnread }) => {
     const { user } = useAuth();
 
     // ============================================
@@ -48,6 +50,9 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         loadActiveChats,
         loadArchivedChats
     } = useChats();
+
+    // Obtener eventos de socket
+    const { onUnreadUpdate, offUnreadUpdate } = useSocket();
 
     // ============================================
     // ESTADOS LOCALES
@@ -80,7 +85,93 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     }, []);
 
     // ============================================
-    //  FUNCIÓN PARA BUSCAR CHAT PRIVADO EXISTENTE
+    // LIMPIAR NO LEÍDOS DE UN CHAT
+    // ============================================
+    const clearUnreadCount = useCallback((chatId: string) => {
+        const currentCount = unreadCounts.get(chatId) || 0;
+        
+        setUnreadCounts(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(chatId);
+            return newMap;
+        });
+        
+        if (currentCount > 0) {
+            setTotalUnread(prev => Math.max(0, prev - currentCount));
+        }
+    }, [unreadCounts]);
+
+    // ============================================
+    // ESCUCHAR ACTUALIZACIONES DE NO LEÍDOS EN TIEMPO REAL (WebSocket)
+    // ============================================
+    useEffect(() => {
+        const handleUnreadUpdate = (data: { chatId: string; count: number }) => {
+            console.log('📢 No leídos actualizado en tiempo real:', data);
+            
+            setUnreadCounts(prev => {
+                const newMap = new Map(prev);
+                if (data.count > 0) {
+                    newMap.set(data.chatId, data.count);
+                } else {
+                    newMap.delete(data.chatId);
+                }
+                
+                // Recalcular total inmediatamente
+                let total = 0;
+                for (const count of newMap.values()) {
+                    total += count;
+                }
+                setTotalUnread(total);
+                
+                return newMap;
+            });
+        };
+
+        onUnreadUpdate(handleUnreadUpdate);
+
+        return () => {
+            offUnreadUpdate(handleUnreadUpdate);
+        };
+    }, [onUnreadUpdate, offUnreadUpdate]);
+
+    // ============================================
+    // Cargar conteo de no leídos (SOLO INICIAL)
+    // ============================================
+    useEffect(() => {
+        const loadUnreadCounts = async () => {
+            try {
+                const totalResponse = await getTotalUnreadCountService();
+                if (totalResponse.success) {
+                    setTotalUnread(totalResponse.data?.totalUnread || 0);
+                }
+
+                const counts = new Map<string, number>();
+                for (const chat of activeChats) {
+                    try {
+                        const response = await getUnreadCountService(chat.id);
+                        if (response.success) {
+                            const count = response.data?.unreadCount || 0;
+                            if (count > 0) {
+                                counts.set(chat.id, count);
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Error al obtener no leídos del chat ${chat.id}:`, error);
+                    }
+                }
+                setUnreadCounts(counts);
+            } catch (error) {
+                console.error('❌ Error al cargar no leídos:', error);
+            }
+        };
+
+        if (activeChats.length > 0) {
+            loadUnreadCounts();
+        }
+    }, [activeChats]);
+
+    // ============================================
+    // FUNCIÓN PARA BUSCAR CHAT PRIVADO EXISTENTE
     // ============================================
     const findExistingPrivateChat = useCallback((friendId: string) => {
         const allChats = [...activeChats, ...archivedChats];
@@ -88,21 +179,18 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         return allChats.find(chat => {
             if (chat.type !== 'private') return false;
             
-            // Buscar en Participants
             if (chat.Participants && chat.Participants.length > 0) {
                 const hasFriend = chat.Participants.some((p: any) => p.id === friendId || p.user_id === friendId);
                 const hasCurrentUser = chat.Participants.some((p: any) => p.id === user?.id || p.user_id === user?.id);
                 if (hasFriend && hasCurrentUser) return true;
             }
             
-            // Buscar en Users
             if (chat.Users && chat.Users.length > 0) {
                 const hasFriend = chat.Users.some((u: any) => u.id === friendId);
                 const hasCurrentUser = chat.Users.some((u: any) => u.id === user?.id);
                 if (hasFriend && hasCurrentUser) return true;
             }
             
-            // Buscar por nombre
             if (chat.name === friendId) return true;
             
             return false;
@@ -137,38 +225,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         loadBlocked();
     }, [friends]);
 
-    // Cargar conteo de no leídos
-    useEffect(() => {
-        const loadUnreadCounts = async () => {
-            try {
-                const totalResponse = await getTotalUnreadCountService();
-                if (totalResponse.success) {
-                    setTotalUnread(totalResponse.data?.totalUnread || 0);
-                }
-
-                const counts = new Map<string, number>();
-                for (const chat of activeChats) {
-                    try {
-                        const response = await getUnreadCountService(chat.id);
-                        if (response.success) {
-                            const count = response.data?.unreadCount || 0;
-                            if (count > 0) counts.set(chat.id, count);
-                        }
-                    } catch (error) {
-                        console.error(`Error al obtener no leídos del chat ${chat.id}:`, error);
-                    }
-                }
-                setUnreadCounts(counts);
-            } catch (error) {
-                console.error('❌ Error al cargar no leídos:', error);
-            }
-        };
-
-        if (activeChats.length > 0) {
-            loadUnreadCounts();
-        }
-    }, [activeChats]);
-
     // ============================================
     // FUNCIONES PRINCIPALES
     // ============================================
@@ -192,7 +248,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         let isOnline = false;
         let lastSeen: string | null = null;
 
-        // Buscar en Participants
         if (chat.Participants && chat.Participants.length > 0) {
             const otherUser = chat.Participants.find((p: any) => p.id !== user?.id);
             if (otherUser) {
@@ -203,7 +258,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
             }
         }
 
-        // Si no se encontró en Participants, buscar en Users
         if (!friendId && chat.Users && chat.Users.length > 0) {
             const otherUser = chat.Users.find((u: any) => u.id !== user?.id);
             if (otherUser) {
@@ -213,20 +267,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
             }
         }
 
-        // Si no se encontró en ninguno, usar chat.name
         if (!friendId && chat.name) {
             displayName = chat.name;
             avatar = displayName.charAt(0).toUpperCase();
         }
 
-        // Fallback
         if (!displayName) {
             displayName = 'Usuario';
             avatar = '👤';
             avatarBg = 'from-gray-500 to-gray-600';
         }
 
-        // Obtener estado del amigo
         if (friendId) {
             const friendData = friends.find(f => f.friend?.id === friendId || f.user_id === friendId);
             if (friendData?.friend) {
@@ -259,7 +310,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         lastChatCreationRef.current = now;
 
         try {
-            //  Buscar chat existente con la nueva función
             const existingChat = findExistingPrivateChat(friendId);
             
             if (existingChat) {
@@ -284,7 +334,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                 return;
             }
 
-            // No existe, crear nuevo chat
             const newChat = await createChat([friendId], 'private', friendName);
             if (newChat) {
                 await loadActiveChats();
@@ -433,7 +482,13 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                             className="flex items-center justify-between group hover:bg-gray-50 dark:hover:bg-gray-800 transition"
                         >
                             <div
-                                onClick={() => onSelectChat(chat.id, displayName, isOnline, lastSeen)}
+                                onClick={() => {
+                                    clearUnreadCount(chat.id);
+                                    if (onClearUnread) {
+                                        onClearUnread(chat.id);
+                                    }
+                                    onSelectChat(chat.id, displayName, isOnline, lastSeen);
+                                }}
                                 className={`flex items-center gap-3 p-4 flex-1 cursor-pointer ${
                                     selectedChatId === chat.id ? 'bg-blue-50 dark:bg-blue-900/30' : ''
                                 }`}
@@ -500,7 +555,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                 })
             )}
         </div>
-    ), [getFriendInfoFromChat, onSelectChat, selectedChatId, unreadCounts, user, handleDeleteChat, handleArchiveChat, handleUnarchiveChat]);
+    ), [getFriendInfoFromChat, onSelectChat, selectedChatId, unreadCounts, user, handleDeleteChat, handleArchiveChat, handleUnarchiveChat, clearUnreadCount, onClearUnread]);
 
     // ============================================
     // RENDER

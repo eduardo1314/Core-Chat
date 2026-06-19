@@ -1,58 +1,76 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useSocket } from '../hooks/useSocket'; // aqui traigo los eventos de socket
+import { useSocket } from '../hooks/useSocket';
 import { usePageVisibility } from '../hooks/usePageVisibility';
-import { useReconnection } from '../hooks/useReconnection'; //  HOOK DE RECONEXIÓN
+import { useReconnection } from '../hooks/useReconnection';
 import Sidebar from '../components/chat/Sidebar';
 import ChatArea from '../components/chat/ChatArea';
 import SettingsMenu from '../components/common/SettingsMenu';
+import { markAsReadService } from '../services/messages.service'; 
 
 const ChatLayout: React.FC = () => {
     const { user, logout } = useAuth();
-    const { socket, emitUserOffline } = useSocket(); // OBTENER SOCKET
+    const { socket, emitUserOffline } = useSocket();
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [selectedChatName, setSelectedChatName] = useState<string>('');
+    const [selectedChatStatus, setSelectedChatStatus] = useState<boolean>(false); 
+    const [selectedChatLastSeen, setSelectedChatLastSeen] = useState<string | null>(null); 
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
-    //  ACTIVAR DETECCIÓN DE CIERRE DE PESTAÑA
+    // ACTIVAR DETECCIÓN DE CIERRE DE PESTAÑA
     usePageVisibility();
 
     // ACTIVAR RECONEXIÓN AUTOMÁTICA
     useReconnection();
+
+    // ==========================================
+    // PARA MARCAR MENSAJES COMO LEÍDOS
+    // ==========================================
+    const handleClearUnread = useCallback(async (chatId: string) => {
+        try {
+            const response = await markAsReadService(chatId);
+            if (response.success) {
+                console.log('✅ Mensajes marcados como leídos para el chat:', chatId);
+            }
+        } catch (error) {
+            console.error('❌ Error al marcar mensajes como leídos:', error);
+        }
+    }, []);
+
+    // ==========================================
+    //  PARA SELECCIONAR CHAT
+    // ==========================================
+    const handleSelectChat = useCallback((chatId: string | null, chatName?: string, isOnline?: boolean, lastSeen?: string | null) => {
+        console.log('📌 Chat seleccionado:', { chatId, chatName, isOnline, lastSeen });
+        setSelectedChatId(chatId);
+        setSelectedChatName(chatName || 'Chat');
+        setSelectedChatStatus(isOnline || false);
+        setSelectedChatLastSeen(lastSeen || null);
+
+        // Cuando se selecciona un chat, marcar como leídos en el backend
+        if (chatId) {
+            handleClearUnread(chatId);
+        }
+    }, [handleClearUnread]);
+
     // ==========================================
     //  LOGOUT CON SOCKET
     // ==========================================
     const handleLogout = async () => {
         try {
-            // 1. Notificar al servidor que el usuario se va
             if (user?.id) {
                 console.log(`📤 Usuario ${user.id} cerrando sesión`);
                 emitUserOffline(user.id);
-                
-                // 2. Esperar un poco para que se procese
                 await new Promise(resolve => setTimeout(resolve, 100));
-                
-                // 3. Desconectar socket
                 if (socket) {
                     socket.disconnect();
                 }
             }
-            
-            // 4. Llamar al logout del contexto
             await logout();
-            
         } catch (error) {
             console.error('❌ Error al cerrar sesión:', error);
-            // Si hay error, igual intentar logout
             await logout();
         }
-    };
-
-    // Función para manejar la selección de chat
-    const handleSelectChat = (chatId: string | null, chatName?: string) => {
-        console.log('📌 Chat seleccionado:', { chatId, chatName });
-        setSelectedChatId(chatId);
-        setSelectedChatName(chatName || 'Chat');
     };
 
     // Animación de partículas
@@ -193,7 +211,9 @@ const ChatLayout: React.FC = () => {
                 />
                 <ChatArea 
                     chatId={selectedChatId} 
-                    chatName={selectedChatName}  
+                    chatName={selectedChatName}
+                    isOnline={selectedChatStatus}
+                    lastSeen={selectedChatLastSeen}
                 />
             </div>
         </div>

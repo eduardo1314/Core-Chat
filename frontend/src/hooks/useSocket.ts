@@ -31,7 +31,11 @@ interface UseSocketReturn {
     
     //  EVENTO PARA "ESCRIBIENDO..."
     onUserTyping: (callback: (data: any) => void) => void;       
-    offUserTyping: (callback?: (data: any) => void) => void;     
+    offUserTyping: (callback?: (data: any) => void) => void;   
+    
+    //no leidos
+     onUnreadUpdate: (callback: (data: any) => void) => void;
+    offUnreadUpdate: (callback?: (data: any) => void) => void;
 }
 
 export const useSocket = (): UseSocketReturn => {
@@ -52,6 +56,9 @@ export const useSocket = (): UseSocketReturn => {
     const messageDeletedCallbacks = useRef<Set<(data: any) => void>>(new Set());
     const messageEditedCallbacks = useRef<Set<(data: any) => void>>(new Set());
     const userTypingCallbacks = useRef<Set<(data: any) => void>>(new Set());
+
+    // Callbacks de no leídos
+    const unreadUpdateCallbacks = useRef<Set<(data: any) => void>>(new Set())
 
     useEffect(() => {
         const socketUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
@@ -128,6 +135,14 @@ export const useSocket = (): UseSocketReturn => {
         });
 
         // ==========================================
+        //  EVENTO DE NO LEÍDOS
+        // ==========================================
+        socketRef.current.on('unread-update', (data) => {
+            console.log('📢 [SOCKET] Actualización de no leídos:', data);
+            unreadUpdateCallbacks.current.forEach(cb => cb(data));
+        });
+
+        // ==========================================
         // CLEANUP
         // ==========================================
         return () => {
@@ -174,6 +189,12 @@ export const useSocket = (): UseSocketReturn => {
                     socketRef.current?.off('user-typing', cb);
                 });
                 userTypingCallbacks.current.clear();
+
+                // Limpiar nuevos listeners
+                unreadUpdateCallbacks.current.forEach(cb => {
+                    socketRef.current?.off('unread-update', cb);
+                });
+                unreadUpdateCallbacks.current.clear();
                 
                 // Remover eventos base
                 socketRef.current.off('connect');
@@ -413,6 +434,30 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+         //  FUNCIONES DE NO LEÍDOS
+    // ============================================
+
+    const onUnreadUpdate = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        unreadUpdateCallbacks.current.add(callback);
+        socketRef.current.on('unread-update', callback);
+        console.log('📝 Listener unread-update registrado');
+    }, []);
+
+    const offUnreadUpdate = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            unreadUpdateCallbacks.current.delete(callback);
+            socketRef.current.off('unread-update', callback);
+        } else {
+            unreadUpdateCallbacks.current.forEach(cb => {
+                socketRef.current?.off('unread-update', cb);
+            });
+            unreadUpdateCallbacks.current.clear();
+        }
+    }, []);
+
+
     return {
         socket: socketRef.current,
         isConnected,
@@ -438,5 +483,9 @@ export const useSocket = (): UseSocketReturn => {
         offMessageEdited,
         onUserTyping,
         offUserTyping,
+        //funciones de no leidoss
+        onUnreadUpdate,
+        offUnreadUpdate
+
     };
 };
