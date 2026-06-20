@@ -21,6 +21,9 @@ export interface FriendResponse {
 
 export class FriendService {
     
+    // ============================================
+    // ENVIAR SOLICITUD DE AMISTAD
+    // ============================================
     async sendFriendRequest(userId: string, friendId: string): Promise<FriendResponse> {
         if (userId === friendId) {
             throw new Error('No puedes agregarte a ti mismo');
@@ -63,6 +66,9 @@ export class FriendService {
         return this.formatFriendResponse(friendRequest, userId);
     }
     
+    // ============================================
+    // ACEPTAR SOLICITUD DE AMISTAD
+    // ============================================
     async acceptFriendRequest(userId: string, requestId: string): Promise<FriendResponse> {
         const friendRequest = await Friend.findOne({
             where: {
@@ -81,6 +87,9 @@ export class FriendService {
         return this.formatFriendResponse(friendRequest, userId);
     }
     
+    // ============================================
+    // RECHAZAR SOLICITUD DE AMISTAD
+    // ============================================
     async rejectFriendRequest(userId: string, requestId: string): Promise<void> {
         const friendRequest = await Friend.findOne({
             where: {
@@ -97,6 +106,20 @@ export class FriendService {
         await friendRequest.destroy();
     }
     
+    // ============================================
+    // OBTENER SOLICITUD POR ID 
+    // ============================================
+    async getFriendRequestById(requestId: string): Promise<any> {
+        const friendRequest = await Friend.findByPk(requestId);
+        if (!friendRequest) {
+            throw new Error('Solicitud no encontrada');
+        }
+        return friendRequest;
+    }
+    
+    // ============================================
+    // BLOQUEAR USUARIO
+    // ============================================
     async blockUser(userId: string, friendId: string): Promise<FriendResponse> {
         await Friend.destroy({
             where: {
@@ -118,6 +141,9 @@ export class FriendService {
         return this.formatFriendResponse(block, userId);
     }
     
+    // ============================================
+    // DESBLOQUEAR USUARIO
+    // ============================================
     async unblockUser(userId: string, friendId: string): Promise<void> {
         await Friend.destroy({
             where: {
@@ -128,16 +154,18 @@ export class FriendService {
         });
     }
     
- // funciones para obtener amigos, solicitudes pendientes, solicitudes enviadas, verificar estado de amistad y obtener sugerencias de amigos
-   async getFriends(userId: string): Promise<FriendResponse[]> {
-    const friends = await Friend.findAll({
-        where: {
-            [Op.or]: [
-                { user_id: userId, status: ['accepted', 'blocked'] },
-                { friend_id: userId, status: ['accepted', 'blocked'] }
-            ]
-        }
-    });
+    // ============================================
+    // OBTENER AMIGOS
+    // ============================================
+    async getFriends(userId: string): Promise<FriendResponse[]> {
+        const friends = await Friend.findAll({
+            where: {
+                [Op.or]: [
+                    { user_id: userId, status: ['accepted', 'blocked'] },
+                    { friend_id: userId, status: ['accepted', 'blocked'] }
+                ]
+            }
+        });
         
         const result: FriendResponse[] = [];
         
@@ -170,6 +198,9 @@ export class FriendService {
         return result;
     }
     
+    // ============================================
+    // OBTENER SOLICITUDES PENDIENTES
+    // ============================================
     async getPendingRequests(userId: string): Promise<FriendResponse[]> {
         const requests = await Friend.findAll({
             where: {
@@ -208,6 +239,9 @@ export class FriendService {
         return result;
     }
     
+    // ============================================
+    // OBTENER SOLICITUDES ENVIADAS
+    // ============================================
     async getSentRequests(userId: string): Promise<FriendResponse[]> {
         const requests = await Friend.findAll({
             where: {
@@ -246,6 +280,9 @@ export class FriendService {
         return result;
     }
     
+    // ============================================
+    // VERIFICAR ESTADO DE AMISTAD
+    // ============================================
     async checkFriendship(userId: string, friendId: string): Promise<{ status: string; isFriend: boolean }> {
         const friendship = await Friend.findOne({
             where: {
@@ -266,6 +303,9 @@ export class FriendService {
         };
     }
     
+    // ============================================
+    // OBTENER SUGERENCIAS DE AMIGOS
+    // ============================================
     async getFriendSuggestions(userId: string, limit = 10): Promise<any[]> {
         const existingRelations = await Friend.findAll({
             where: {
@@ -296,6 +336,9 @@ export class FriendService {
         return suggestions;
     }
     
+    // ============================================
+    // FORMATO DE RESPUESTA
+    // ============================================
     private formatFriendResponse(friend: any, currentUserId: string): FriendResponse {
         return {
             id: friend.id,

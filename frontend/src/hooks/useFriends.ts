@@ -48,7 +48,12 @@ export const useFriends = (): UseFriendsReturn => {
         onUserOffline, 
         offUserOffline,
         onUserStatusUpdated,
-        offUserStatusUpdated
+        offUserStatusUpdated,
+        // EVENTOS DE BLOQUEO
+        onUserBlocked,
+        offUserBlocked,
+        onFriendStatusChanged,
+        offFriendStatusChanged
     } = useSocket();
 
     // ============================================
@@ -165,7 +170,7 @@ export const useFriends = (): UseFriendsReturn => {
     }, []);
 
     // ============================================
-    //  ESCUCHAR EVENTOS DE ONLINE/OFFLINE
+    // ESCUCHAR EVENTOS DE ONLINE/OFFLINE
     // ============================================
 
     useEffect(() => {
@@ -232,18 +237,51 @@ export const useFriends = (): UseFriendsReturn => {
             );
         };
 
-        //  Registrar listeners
+        // Registrar listeners
         onUserOnline(handleUserOnline);
         onUserOffline(handleUserOffline);
         onUserStatusUpdated(handleUserStatusUpdated);
 
-        //  Limpiar listeners al desmontar
+        // Limpiar listeners al desmontar
         return () => {
             offUserOnline(handleUserOnline);
             offUserOffline(handleUserOffline);
             offUserStatusUpdated(handleUserStatusUpdated);
         };
     }, [onUserOnline, offUserOnline, onUserOffline, offUserOffline, onUserStatusUpdated, offUserStatusUpdated]);
+
+
+    // Cuando un usuario es bloqueado
+    useEffect(() => {
+        const handleUserBlocked = (data: { blockedBy: string; timestamp: string }) => {
+            console.log('🚫 [useFriends] Usuario bloqueado en tiempo real:', data);
+            // Recargar todas las listas para actualizar el estado
+            loadFriends();
+            loadPendingRequests();
+            loadSentRequests();
+        };
+
+        onUserBlocked(handleUserBlocked);
+
+        return () => {
+            offUserBlocked(handleUserBlocked);
+        };
+    }, [onUserBlocked, offUserBlocked, loadFriends, loadPendingRequests, loadSentRequests]);
+
+    // Cuando cambia el estado de un amigo (amistad/bloqueo)
+    useEffect(() => {
+        const handleFriendStatusChanged = (data: { userId: string; friendId: string; status: string }) => {
+            console.log('📢 [useFriends] Estado de amigo cambiado:', data);
+            loadFriends();
+            loadPendingRequests();
+        };
+
+        onFriendStatusChanged(handleFriendStatusChanged);
+
+        return () => {
+            offFriendStatusChanged(handleFriendStatusChanged);
+        };
+    }, [onFriendStatusChanged, offFriendStatusChanged, loadFriends, loadPendingRequests]);
 
     // ============================================
     // CARGA INICIAL

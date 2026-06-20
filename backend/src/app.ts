@@ -9,11 +9,9 @@ import friendRoutes from './routes/friend.routes';
 import userRoutes from './routes/user.routes';
 import cookieParser from 'cookie-parser';
 
-
 const app: Express = express();
 
-
-// 2. CORS configuration
+// CORS configuration
 const corsOptions = {
   origin: process.env.CORS_ORIGIN?.split(",") || [
     "http://localhost:3000",
@@ -34,9 +32,29 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     next();
 });
 
+//  Health check 
+app.get('/health', (req: Request, res: Response) => {
+    res.json({
+        status: 'OK',
+        service: 'Core-Chat API',
+        version: '1.0.0',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+    });
+});
+
 // Ruta principal
 app.get('/', (req: Request, res: Response) => {
-    res.send('hello world, desde el universo de dragon ball');
+    res.json({
+        message: 'hello world, desde el universo de dragon ball JAJA',
+        endpoints: {
+            auth: `${config.apiPrefix}/auth`,
+            chats: `${config.apiPrefix}/chats`,
+            messages: `${config.apiPrefix}/messages`,
+            friends: `${config.apiPrefix}/friends`,
+            users: `${config.apiPrefix}/users`
+        }
+    });
 });
 
 // Rutas de la API

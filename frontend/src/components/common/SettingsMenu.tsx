@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useFriends } from '../../hooks/useFriends';
 import { getFriendsService } from '../../services/friends.service';
+import { useSocket } from '../../hooks/useSocket'; 
 import ThemeToggle from './ThemeToggle';
 
 const SettingsMenu: React.FC = () => {
@@ -12,12 +13,33 @@ const SettingsMenu: React.FC = () => {
     const { friends, unblockUser, loadFriends } = useFriends();
     const [showBlockedList, setShowBlockedList] = useState(false);
     const [blockedUsers, setBlockedUsers] = useState(friends.filter(f => f.status === 'blocked'));
-    const [updateTrigger, setUpdateTrigger] = useState(0);
 
-    // Actualizar la lista de bloqueados cuando friends cambie o se fuerce actualización
+    // Obtener eventos de socket
+    const { onUserStatusUpdated, offUserStatusUpdated } = useSocket();
+
+    // Actualizar la lista de bloqueados cuando friends cambie
     useEffect(() => {
         setBlockedUsers(friends.filter(f => f.status === 'blocked'));
-    }, [friends, updateTrigger]);
+    }, [friends]);
+
+    //  ESCUCHAR CAMBIOS EN TIEMPO REAL (cuando alguien bloquea/desbloquea)
+    useEffect(() => {
+        const handleUserStatusUpdated = (data: { userId: string; status: string }) => {
+            console.log('📢 [SettingsMenu] Estado de usuario actualizado:', data);
+            
+            //  Recargar la lista de amigos para actualizar bloqueados
+            loadFriends();
+        };
+
+        //  Registrar listener
+        onUserStatusUpdated(handleUserStatusUpdated);
+
+        return () => {
+            offUserStatusUpdated(handleUserStatusUpdated);
+        };
+    }, [onUserStatusUpdated, offUserStatusUpdated, loadFriends]);
+
+  
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -42,15 +64,12 @@ const SettingsMenu: React.FC = () => {
             // Recargar amigos
             await loadFriends();
             
-            // Forzar actualización manual del estado local
+            //  Obtener lista actualizada
             const response = await getFriendsService();
             if (response.success && response.data) {
                 const updatedBlocked = response.data.filter(f => f.status === 'blocked');
                 setBlockedUsers(updatedBlocked);
             }
-            
-            // Forzar re-render
-            setUpdateTrigger(prev => prev + 1);
             
             alert('✅ Usuario desbloqueado');
         } catch (error) {

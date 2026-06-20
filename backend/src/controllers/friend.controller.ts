@@ -1,15 +1,36 @@
 import { Request, Response } from 'express';
 import { friendService } from '../services/friend.service';
+import { Server } from 'socket.io';
 
+// ============================================
+// FUNCIÓN AUXILIAR PARA EMITIR EVENTOS
+// ============================================
+const emitSocketEvent = (io: Server, event: string, data: any) => {
+    if (io) {
+        io.emit(event, data);
+        console.log(`📤 [Socket] Evento emitido: ${event}`, data);
+    }
+};
 
-
-//funcion para enviar solicitud de amistad
+// ============================================
+// ENVIAR SOLICITUD DE AMISTAD
+// ============================================
 export const sendFriendRequest = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
         const { friendId } = req.body;
         
         const friendRequest = await friendService.sendFriendRequest(userId, friendId);
+        
+        //  Emitir evento WebSocket
+        const io = req.app.get('io');
+        if (io) {
+            io.to(friendId).emit('friend-request-received', {
+                fromUserId: userId,
+                requestId: friendRequest.id,
+                timestamp: new Date().toISOString()
+            });
+        }
         
         res.status(201).json({ success: true, data: friendRequest });
     } catch (error: any) {
@@ -18,14 +39,31 @@ export const sendFriendRequest = async (req: any, res: Response) => {
     }
 };
 
-
-//funcion para aceptar solicitud de amistad
+// ============================================
+// ACEPTAR SOLICITUD DE AMISTAD
+// ============================================
 export const acceptFriendRequest = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
         const { requestId } = req.params;
         
         const friendRequest = await friendService.acceptFriendRequest(userId, requestId);
+        
+        //  Emitir evento WebSocket
+        const io = req.app.get('io');
+        if (io) {
+            io.to(friendRequest.user_id).emit('friend-request-accepted', {
+                byUserId: userId,
+                requestId: requestId,
+                timestamp: new Date().toISOString()
+            });
+            
+            io.to(userId).emit('friend-status-updated', {
+                userId: friendRequest.user_id,
+                status: 'accepted',
+                timestamp: new Date().toISOString()
+            });
+        }
         
         res.json({ success: true, data: friendRequest });
     } catch (error: any) {
@@ -34,14 +72,26 @@ export const acceptFriendRequest = async (req: any, res: Response) => {
     }
 };
 
-
-//funcion para rechar solicitud de amistad
+// ============================================
+// RECHAZAR SOLICITUD DE AMISTAD
+// ============================================
 export const rejectFriendRequest = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
         const { requestId } = req.params;
         
+        const friendRequest = await friendService.getFriendRequestById(requestId);
         await friendService.rejectFriendRequest(userId, requestId);
+        
+        // Emitir evento WebSocket
+        const io = req.app.get('io');
+        if (io && friendRequest) {
+            io.to(friendRequest.user_id).emit('friend-request-rejected', {
+                byUserId: userId,
+                requestId: requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
         
         res.json({ success: true, message: 'Solicitud rechazada' });
     } catch (error: any) {
@@ -50,14 +100,40 @@ export const rejectFriendRequest = async (req: any, res: Response) => {
     }
 };
 
-
-//funcion para  bloquear un amuigo
+// ============================================
+//  BLOQUEAR USUARIO 
+// ============================================
 export const blockUser = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
         const { friendId } = req.body;
         
         const block = await friendService.blockUser(userId, friendId);
+        
+        // Emitir por WebSocket
+        const io = req.app.get('io');
+        if (io) {
+            // 1. Notificar al usuario bloqueado
+            io.to(friendId).emit('user-blocked', {
+                blockedBy: userId,
+                timestamp: new Date().toISOString()
+            });
+
+            // 2. Notificar al usuario que bloqueó
+            io.to(userId).emit('user-status-updated', {
+                userId: friendId,
+                status: 'blocked',
+                timestamp: new Date().toISOString()
+            });
+
+            // 3. Notificar a todos (amigos comunes)
+            io.emit('friend-status-changed', {
+                userId: userId,
+                friendId: friendId,
+                status: 'blocked',
+                timestamp: new Date().toISOString()
+            });
+        }
         
         res.json({ success: true, data: block });
     } catch (error: any) {
@@ -66,13 +142,40 @@ export const blockUser = async (req: any, res: Response) => {
     }
 };
 
-//funcion para desbloquear un usuario
+// ============================================
+// DESBLOQUEAR USUARIO 
+// ============================================
 export const unblockUser = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
         const { friendId } = req.params;
         
         await friendService.unblockUser(userId, friendId);
+        
+        //  Emitir por WebSocket
+        const io = req.app.get('io');
+        if (io) {
+            // 1. Notificar al usuario desbloqueado
+            io.to(friendId).emit('user-unblocked', {
+                unblockedBy: userId,
+                timestamp: new Date().toISOString()
+            });
+
+            // 2. Notificar al usuario que desbloqueó
+            io.to(userId).emit('user-status-updated', {
+                userId: friendId,
+                status: 'accepted',
+                timestamp: new Date().toISOString()
+            });
+
+            // 3. Notificar a todos
+            io.emit('friend-status-changed', {
+                userId: userId,
+                friendId: friendId,
+                status: 'accepted',
+                timestamp: new Date().toISOString()
+            });
+        }
         
         res.json({ success: true, message: 'Usuario desbloqueado' });
     } catch (error: any) {
@@ -81,8 +184,9 @@ export const unblockUser = async (req: any, res: Response) => {
     }
 };
 
-
-//funcion para obtener lista de amigos
+// ============================================
+// OBTENER LISTA DE AMIGOS
+// ============================================
 export const getFriends = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
@@ -96,8 +200,9 @@ export const getFriends = async (req: any, res: Response) => {
     }
 };
 
-
-//funcion para obtener lista de solicitudes pendientes
+// ============================================
+// OBTENER SOLICITUDES PENDIENTES
+// ============================================
 export const getPendingRequests = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
@@ -111,8 +216,9 @@ export const getPendingRequests = async (req: any, res: Response) => {
     }
 };
 
-
-//funcion para obtener lista de solicitudes enviadas
+// ============================================
+// OBTENER SOLICITUDES ENVIADAS
+// ============================================
 export const getSentRequests = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
@@ -126,8 +232,9 @@ export const getSentRequests = async (req: any, res: Response) => {
     }
 };
 
-
-//funcion para obtener sugerencias de amigos
+// ============================================
+// OBTENER SUGERENCIAS DE AMIGOS
+// ============================================
 export const getFriendSuggestions = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;
@@ -142,7 +249,9 @@ export const getFriendSuggestions = async (req: any, res: Response) => {
     }
 };
 
-//funcion para verificar estado de amistad con otro usuario
+// ============================================
+// VERIFICAR ESTADO DE AMISTAD
+// ============================================
 export const checkFriendship = async (req: any, res: Response) => {
     try {
         const userId = req.user.id;

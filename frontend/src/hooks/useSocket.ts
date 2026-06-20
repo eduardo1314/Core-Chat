@@ -22,6 +22,13 @@ interface UseSocketReturn {
     onUserStatusUpdated: (callback: (data: any) => void) => void;
     offUserStatusUpdated: (callback?: (data: any) => void) => void;
     emitUserOffline: (userId: string) => void;
+
+    //eventos de bloqueo
+    onUserBlocked: (callback: (data: any) => void) => void;
+    offUserBlocked: (callback?: (data: any) => void) => void;
+    onFriendStatusChanged: (callback: (data: any) => void) => void;
+    offFriendStatusChanged: (callback?: (data: any) => void) => void;
+
     
     //  EVENTOS PARA MENSAJES
     onMessageDeleted: (callback: (data: any) => void) => void;   
@@ -46,6 +53,10 @@ export const useSocket = (): UseSocketReturn => {
     // Callbacks existentes
     const newMessageCallbacks = useRef<Set<(data: any) => void>>(new Set());
     const messageSentCallbacks = useRef<Set<(data: any) => void>>(new Set());
+
+    //funcion oara bloquear y desbloquear
+    const userBlockedCallbacks = useRef<Set<(data: any) => void>>(new Set());
+   const friendStatusChangedCallbacks = useRef<Set<(data: any) => void>>(new Set());
     
     // Callbacks online/offline
     const userOnlineCallbacks = useRef<Set<(data: any) => void>>(new Set());
@@ -108,6 +119,17 @@ export const useSocket = (): UseSocketReturn => {
             console.log(`📌 Estado de usuario actualizado:`, data);
             userStatusUpdatedCallbacks.current.forEach(cb => cb(data));
         });
+
+       //EVENTOS DE BLOQUEO Y DESBLOQUEI
+        socketRef.current.on('user-blocked', (data) => {
+    console.log('🚫 [SOCKET] Usuario bloqueado:', data);
+    userBlockedCallbacks.current.forEach(cb => cb(data));
+          });
+
+        socketRef.current.on('friend-status-changed', (data) => {
+    console.log('📢 [SOCKET] Estado de amigo cambiado:', data);
+    friendStatusChangedCallbacks.current.forEach(cb => cb(data));
+            });
 
         // ==========================================
         //EVENTOS MENSAJE ELIMINADO
@@ -269,6 +291,49 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    // funcion de bloqueo y desbloqueo
+const onUserBlocked = useCallback((callback: (data: any) => void) => {
+    if (!socketRef.current) return;
+    userBlockedCallbacks.current.add(callback);
+    socketRef.current.on('user-blocked', callback);
+    console.log('📝 Listener user-blocked registrado');
+    }, []);
+
+const offUserBlocked = useCallback((callback?: (data: any) => void) => {
+    if (!socketRef.current) return;
+    if (callback) {
+        userBlockedCallbacks.current.delete(callback);
+        socketRef.current.off('user-blocked', callback);
+    } else {
+        userBlockedCallbacks.current.forEach(cb => {
+            socketRef.current?.off('user-blocked', cb);
+        });
+        userBlockedCallbacks.current.clear();
+    }
+}, []);
+
+const onFriendStatusChanged = useCallback((callback: (data: any) => void) => {
+    if (!socketRef.current) return;
+    friendStatusChangedCallbacks.current.add(callback);
+    socketRef.current.on('friend-status-changed', callback);
+    console.log('📝 Listener friend-status-changed registrado');
+}, []);
+
+const offFriendStatusChanged = useCallback((callback?: (data: any) => void) => {
+    if (!socketRef.current) return;
+    if (callback) {
+        friendStatusChangedCallbacks.current.delete(callback);
+        socketRef.current.off('friend-status-changed', callback);
+    } else {
+        friendStatusChangedCallbacks.current.forEach(cb => {
+            socketRef.current?.off('friend-status-changed', cb);
+        });
+        friendStatusChangedCallbacks.current.clear();
+    }
+}, []);
+
+   
+    //funcion de mensajes
     const onMessageSent = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         messageSentCallbacks.current.add(callback);
@@ -485,7 +550,13 @@ export const useSocket = (): UseSocketReturn => {
         offUserTyping,
         //funciones de no leidoss
         onUnreadUpdate,
-        offUnreadUpdate
+        offUnreadUpdate,
+        //fucion para bloqueo y desbloqueo
+        onUserBlocked,
+        offUserBlocked,
+        onFriendStatusChanged,
+        offFriendStatusChanged
+
 
     };
 };

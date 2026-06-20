@@ -57,7 +57,6 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         offNewMessage,
         onMessageSent,
         offMessageSent,
-        //eventos de socket
         onUserTyping,
         offUserTyping,
         onMessageDeleted,
@@ -174,7 +173,7 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
     }, [chatId, isConnected, joinChat, leaveChat, loadInitialMessages]);
 
     // ============================================
-    // 4. ESCUCHAR NUEVOS MENSAJES
+    // 4. ESCUCHAR NUEVOS MENSAJES (PARA RECEPTOR)
     // ============================================
     useEffect(() => {
         if (!chatId || !isConnected) return;
@@ -182,43 +181,42 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         const handleNewMessage = (message: Message) => {
             if (message.chat_id !== chatId) return;
             
+            // Si es un mensaje temporal del emisor, NO lo procesamos aquí
+            if (message.tempId && pendingMessagesRef.current.has(message.tempId)) {
+                console.log('🔄 Mensaje temporal ya está en pending, ignorando new-message');
+                return;
+            }
+
+            //  Prevenir duplicados
             if (messageIdsRef.current.has(message.id)) {
                 console.log('⚠️ Mensaje duplicado ignorado:', message.id);
                 return;
             }
 
-            if (message.tempId && pendingMessagesRef.current.has(message.tempId)) {
-                console.log('🔄 Actualizando mensaje temporal:', message.tempId);
-                setMessages(prev => {
-                    const updated = prev.map(msg => 
-                        msg.tempId === message.tempId ? { ...message, pending: false } : msg
-                    );
-                    return updated;
-                });
-                pendingMessagesRef.current.delete(message.tempId);
-                messageIdsRef.current.add(message.id);
-                
-                markAsReadService(chatId, message.id);
-                return;
-            }
-
+            //  Agregar nuevo mensaje (solo para receptores)
             console.log('📨 Nuevo mensaje recibido:', message.id);
             messageIdsRef.current.add(message.id);
             setMessages(prev => [...prev, message]);
             
-            updateChat(chatId, {
-                lastMessage: {
-                    content: message.content,
-                    created_at: message.created_at,
-                    sender: {
-                        id: message.user_id,
-                        username: message.sender?.username || 'Usuario'
-                    }
-                },
-                updated_at: message.created_at
-            });
+            // Actualizar el chat en la lista 
+            if (chatId) {
+                updateChat(chatId, {
+                    lastMessage: {
+                        content: message.content,
+                        created_at: message.created_at,
+                        sender: {
+                            id: message.user_id,
+                            username: message.sender?.username || 'Usuario'
+                        }
+                    },
+                    updated_at: message.created_at
+                });
+            }
             
-            markAsReadService(chatId, message.id);
+            //  Marcar como leído
+            if (chatId) {
+                markAsReadService(chatId, message.id);
+            }
         };
 
         onNewMessage(handleNewMessage);
@@ -229,7 +227,7 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
     }, [chatId, isConnected, onNewMessage, offNewMessage, updateChat]);
 
     // ============================================
-    // 5. CONFIRMACIÓN DE MENSAJE ENVIADO
+    // 5. CONFIRMACIÓN DE MENSAJE ENVIADO (PARA EMISOR)
     // ============================================
     useEffect(() => {
         console.log('📝 Registrando listener message-sent');
@@ -237,20 +235,37 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         const handleMessageSent = (message: Message) => {
             console.log('✅ Mensaje enviado confirmado por WebSocket:', message.id);
             
+            //  Actualizar mensaje temporal del emisor
             if (message.tempId && pendingMessagesRef.current.has(message.tempId)) {
-                const pending = pendingMessagesRef.current.get(message.tempId);
-                if (pending?._cleanup) {
-                    pending._cleanup();
-                }
-
                 setMessages(prev => {
-                    const updated = prev.map(msg => 
-                        msg.tempId === message.tempId ? { ...message, pending: false } : msg
-                    );
+                    const updated = prev.map(msg => {
+                        if (msg.tempId === message.tempId) {
+                            return {
+                                ...message,
+                                pending: false
+                            };
+                        }
+                        return msg;
+                    });
                     return updated;
                 });
                 pendingMessagesRef.current.delete(message.tempId);
                 messageIdsRef.current.add(message.id);
+                
+                // Actualizar el chat en la lista 
+                if (chatId) {
+                    updateChat(chatId, {
+                        lastMessage: {
+                            content: message.content,
+                            created_at: message.created_at,
+                            sender: {
+                                id: message.user_id,
+                                username: message.sender?.username || 'Usuario'
+                            }
+                        },
+                        updated_at: message.created_at
+                    });
+                }
             }
         };
 
@@ -259,10 +274,10 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         return () => {
             offMessageSent(handleMessageSent);
         };
-    }, [onMessageSent, offMessageSent]);
+    }, [onMessageSent, offMessageSent, chatId, updateChat]);
 
     // ============================================
-    // 6.  ESCUCHAR MENSAJE ELIMINADO
+    // 6. ESCUCHAR MENSAJE ELIMINADO
     // ============================================
     useEffect(() => {
         if (!chatId || !isConnected) return;
@@ -282,7 +297,7 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
     }, [chatId, isConnected, onMessageDeleted, offMessageDeleted]);
 
     // ============================================
-    // 7.  ESCUCHAR MENSAJE EDITADO
+    // 7. ESCUCHAR MENSAJE EDITADO
     // ============================================
     useEffect(() => {
         if (!chatId || !isConnected) return;
@@ -305,7 +320,7 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
     }, [chatId, isConnected, onMessageEdited, offMessageEdited]);
 
     // ============================================
-    // 8.  ESCUCHAR "ESCRIBIENDO..."
+    // 8. ESCUCHAR "ESCRIBIENDO..."
     // ============================================
     useEffect(() => {
         if (!chatId || !isConnected) return;
@@ -331,42 +346,40 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
     }, [chatId, isConnected, user, onUserTyping, offUserTyping]);
 
     // ============================================
-    // 9.  EMITIR "ESCRIBIENDO..."
+    // 9. EMITIR "ESCRIBIENDO..."
     // ============================================
     const emitTypingHandler = useCallback((isTyping: boolean) => {
         if (!chatId || !isConnected) return;
         emitTypingSocket(chatId, isTyping);
     }, [chatId, isConnected, emitTypingSocket]);
 
-   
-
     // ============================================
-// 10.  EDITAR MENSAJE (CORREGIDO)
-// ============================================
-const editMessageHandler = useCallback(async (messageId: string, newContent: string) => {
-    if (!chatId || !newContent.trim()) return;
-    try {
-        const response = await editMessageService(messageId, newContent.trim());
-        if (response.success && response.data) {
-            setMessages(prev => 
-                prev.map(msg => {
-                    if (msg.id === messageId && response.data) {
-                        return {
-                            ...response.data,
-                            is_edited: true
-                        } as Message;
-                    }
-                    return msg;
-                })
-            );
+    // 10. EDITAR MENSAJE
+    // ============================================
+    const editMessageHandler = useCallback(async (messageId: string, newContent: string) => {
+        if (!chatId || !newContent.trim()) return;
+        try {
+            const response = await editMessageService(messageId, newContent.trim());
+            if (response.success && response.data) {
+                setMessages(prev => 
+                    prev.map(msg => {
+                        if (msg.id === messageId && response.data) {
+                            return {
+                                ...response.data,
+                                is_edited: true
+                            } as Message;
+                        }
+                        return msg;
+                    })
+                );
+            }
+        } catch (error) {
+            console.error('❌ Error al editar mensaje:', error);
         }
-    } catch (error) {
-        console.error('❌ Error al editar mensaje:', error);
-    }
-}, [chatId]);
+    }, [chatId]);
 
     // ============================================
-    // 11.  ELIMINAR MENSAJE
+    // 11. ELIMINAR MENSAJE
     // ============================================
     const deleteMessageHandler = useCallback(async (messageId: string) => {
         if (!chatId) return;
@@ -382,7 +395,7 @@ const editMessageHandler = useCallback(async (messageId: string, newContent: str
     }, [chatId]);
 
     // ============================================
-    // 12.  ENVIAR MENSAJE (CON REPLY)
+    // 12. ENVIAR MENSAJE (SOLO WEBSOCKET)
     // ============================================
     const sendMessageHandler = useCallback(async (content: string, replyTo?: string) => {
         if (!chatId || !content.trim() || sending || !user?.id) return;
@@ -404,57 +417,39 @@ const editMessageHandler = useCallback(async (messageId: string, newContent: str
             }
         };
 
+        //  Agregar mensaje temporal
         setMessages(prev => [...prev, tempMessage]);
         pendingMessagesRef.current.set(tempId, tempMessage);
         setSending(true);
 
         try {
-            const response = await sendMessageService(chatId, content.trim(), 'text', replyTo);
-            
-            if (response.success && response.data) {
-                console.log('✅ Mensaje guardado en BD:', response.data.id);
-                
-                setMessages(prev => {
-                    return prev.map(msg => {
-                        if (msg.tempId === tempId && response.data) {
-                            return {
-                                ...response.data,
-                                pending: false
-                            } as Message;
-                        }
-                        return msg;
+            //  Enviar por WebSocket
+            if (isConnected) {
+                sendMessageSocket(
+                    chatId, 
+                    content.trim(), 
+                    user.id, 
+                    user.username || 'Usuario',
+                    tempId
+                );
+            } else {
+                // Respaldo HTTP si no hay conexión
+                const response = await sendMessageService(chatId, content.trim(), 'text', replyTo);
+                if (response.success && response.data) {
+                    setMessages(prev => {
+                        return prev.map(msg => {
+                            if (msg.tempId === tempId && response.data) {
+                                return {
+                                    ...response.data,
+                                    pending: false
+                                } as Message;
+                            }
+                            return msg;
+                        });
                     });
-                });
-                pendingMessagesRef.current.delete(tempId);
-                if (response.data.id) {
+                    pendingMessagesRef.current.delete(tempId);
                     messageIdsRef.current.add(response.data.id);
                 }
-                
-                updateChat(chatId, {
-                    lastMessage: {
-                        content: content.trim(),
-                        created_at: new Date().toISOString(),
-                        sender: {
-                            id: user.id,
-                            username: user.username || 'Tú'
-                        }
-                    },
-                    updated_at: new Date().toISOString()
-                });
-                
-                if (isConnected) {
-                    sendMessageSocket(
-                        chatId, 
-                        content.trim(), 
-                        user.id, 
-                        user.username || 'Usuario',
-                        tempId
-                    );
-                }
-            } else {
-                console.error('❌ Error al guardar mensaje en BD');
-                setMessages(prev => prev.filter(msg => msg.id !== tempId));
-                pendingMessagesRef.current.delete(tempId);
             }
         } catch (error) {
             console.error('❌ Error al enviar mensaje:', error);
@@ -463,7 +458,7 @@ const editMessageHandler = useCallback(async (messageId: string, newContent: str
         } finally {
             setSending(false);
         }
-    }, [chatId, sending, user, sendMessageSocket, isConnected, updateChat]);
+    }, [chatId, sending, user, sendMessageSocket, isConnected]);
 
     // ============================================
     // 13. SCROLL PARA LAZY LOADING

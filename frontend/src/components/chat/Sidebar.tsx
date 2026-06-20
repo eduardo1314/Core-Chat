@@ -102,11 +102,13 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
     }, [unreadCounts]);
 
     // ============================================
-    // ESCUCHAR ACTUALIZACIONES DE NO LEÍDOS EN TIEMPO REAL (WebSocket)
+    // ESCUCHAR ACTUALIZACIONES DE NO LEÍDOS EN TIEMPO REAL 
     // ============================================
     useEffect(() => {
+        console.log('🟢 [Sidebar] useEffect de unreadUpdate registrado');
+
         const handleUnreadUpdate = (data: { chatId: string; count: number }) => {
-            console.log('📢 No leídos actualizado en tiempo real:', data);
+            console.log('📢 [Sidebar] No leídos actualizado en tiempo real:', data);
             
             setUnreadCounts(prev => {
                 const newMap = new Map(prev);
@@ -115,6 +117,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
                 } else {
                     newMap.delete(data.chatId);
                 }
+                
+                console.log('📢 [Sidebar] unreadCounts actualizado:', Array.from(newMap.entries()));
                 
                 // Recalcular total inmediatamente
                 let total = 0;
@@ -130,6 +134,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         onUnreadUpdate(handleUnreadUpdate);
 
         return () => {
+            console.log('🔴 [Sidebar] Removiendo listener de unreadUpdate');
             offUnreadUpdate(handleUnreadUpdate);
         };
     }, [onUnreadUpdate, offUnreadUpdate]);
@@ -197,9 +202,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         });
     }, [activeChats, archivedChats, user]);
 
-    // ============================================
-    // EFECTOS
-    // ============================================
 
     // Cargar nombres personalizados
     useEffect(() => {
