@@ -1,4 +1,3 @@
-// src/services/message.service.ts
 import { Message, Chat, Participant, User } from '../models';
 import { v4 as uuidv4 } from 'uuid';
 import { Op } from 'sequelize';
@@ -10,7 +9,7 @@ const PAGE_SIZE = 30;
 export class MessageService {
     
     // ============================================
-    // 1. ENVIAR MENSAJE
+    // 1. ENVIAR MENSAJE 
     // ============================================
     async sendMessage(data: SendMessageData): Promise<MessageResponse> {
         //  Validar contenido
@@ -30,7 +29,7 @@ export class MessageService {
             throw new Error('No eres participante de este chat');
         }
 
-        //  Crear mensaje (sin metadata ni is_read si no existen)
+        //  Crear mensaje
         const messageData: any = {
             id: uuidv4(),
             chat_id: data.chatId,
@@ -42,9 +41,7 @@ export class MessageService {
             is_deleted: false
         };
         
-        // Solo agregar is_read si existe en el modelo
-        // Si tu modelo no tiene is_read, comenta esta línea
-        // messageData.is_read = false;
+        
         
         const message = await Message.create(messageData);
         
@@ -54,15 +51,29 @@ export class MessageService {
             { where: { id: data.chatId } }
         );
         
-        //  Actualizar last_read_at del participante (si existe el campo)
         try {
             await Participant.update(
                 { last_read_at: new Date() },
                 { where: { chat_id: data.chatId, user_id: data.userId } }
             );
         } catch (error) {
-            // Si no existe el campo, ignorar
             console.log('⚠️ last_read_at no existe en Participant');
+        }
+
+        // Incrementar no leídos para todos los participantes excepto el remitente
+        const participants = await Participant.findAll({
+            where: { chat_id: data.chatId },
+            attributes: ['user_id']
+        });
+
+        for (const p of participants) {
+            if (p.user_id !== data.userId) {
+                try {
+                    await this.incrementUnreadCount(data.chatId, p.user_id);
+                } catch (error) {
+                    console.error(`Error al actualizar no leídos para usuario ${p.user_id}:`, error);
+                }
+            }
         }
         
         // Obtener mensaje completo
@@ -242,7 +253,7 @@ export class MessageService {
     }
     
     // ============================================
-    // 6. MARCAR COMO LEÍDO
+    // 6. MARCAR COMO LEÍDO 
     // ============================================
     async markAsRead(chatId: string, userId: string, messageId?: string): Promise<void> {
         const participant = await Participant.findOne({
@@ -261,6 +272,13 @@ export class MessageService {
             );
         } catch (error) {
             console.log('⚠️ last_read_at no existe en Participant');
+        }
+
+        //Resetear el contador de no leídos
+        try {
+            await this.resetUnreadCount(chatId, userId);
+        } catch (error) {
+            console.error('Error al resetear no leídos:', error);
         }
 
         //  Si se especifica un mensaje y existe el campo is_read
@@ -282,9 +300,28 @@ export class MessageService {
     }
 
     // ============================================
-    // 7. OBTENER CONTEO DE NO LEÍDOS
+    // 7. OBTENER CONTEO DE NO LEÍDOS 
     // ============================================
     async getUnreadCount(chatId: string, userId: string): Promise<number> {
+        //  Intentar obtener de la tabla UnreadCount
+        const UnreadCount = require('../models/UnreadCount').default;
+        
+        try {
+            const unread = await UnreadCount.findOne({
+                where: {
+                    chat_id: chatId,
+                    user_id: userId
+                }
+            });
+            
+            if (unread && unread.count > 0) {
+                return unread.count;
+            }
+        } catch (error) {
+            console.log('⚠️ No se pudo obtener de UnreadCount, usando método alternativo');
+        }
+        
+        //  Método alternativo usando last_read_at
         const participant = await Participant.findOne({
             where: { chat_id: chatId, user_id: userId }
         });
@@ -293,7 +330,6 @@ export class MessageService {
             return 0;
         }
         
-        //  Usar last_read_at si existe
         const lastReadAt = participant.last_read_at || new Date(0);
         
         try {
@@ -306,15 +342,32 @@ export class MessageService {
                 }
             });
         } catch (error) {
-            // Si falla, devolver 0
             return 0;
         }
     }
 
     // ============================================
-    // 8. OBTENER TOTAL DE NO LEÍDOS (TODOS CHATS)
+    // 8. OBTENER TOTAL DE NO LEÍDOS (TODOS CHATS) 
     // ============================================
     async getTotalUnreadCount(userId: string): Promise<number> {
+        // 🔥 PRIMERO: Intentar obtener de la tabla UnreadCount
+        const UnreadCount = require('../models/UnreadCount').default;
+        
+        try {
+            const result = await UnreadCount.sum('count', {
+                where: {
+                    user_id: userId
+                }
+            });
+            
+            if (result) {
+                return result;
+            }
+        } catch (error) {
+            console.log('⚠️ No se pudo obtener total de UnreadCount, usando método alternativo');
+        }
+        
+        // Método alternativo usando last_read_at
         const participants = await Participant.findAll({
             where: { user_id: userId },
             attributes: ['chat_id', 'last_read_at']
@@ -337,7 +390,6 @@ export class MessageService {
                 });
                 totalUnread += count;
             } catch (error) {
-                // Si falla, continuar
                 continue;
             }
         }
@@ -369,6 +421,85 @@ export class MessageService {
             throw new Error('Mensaje no encontrado');
         }
         return message;
+    }
+
+    // ============================================
+    // 11. OBTENER CHAT CON PARTICIPANTES 
+    // ============================================
+    async getChatWithParticipants(chatId: string): Promise<any> {
+        const chat = await Chat.findByPk(chatId, {
+            include: [
+                {
+                    model: Participant,
+                    include: [
+                        {
+                            model: User,
+                            attributes: ['id', 'username', 'avatar_url']
+                        }
+                    ]
+                }
+            ]
+        });
+        
+        if (!chat) {
+            throw new Error('Chat no encontrado');
+        }
+        
+        return chat;
+    }
+
+    // ============================================
+    // 12. INCREMENTAR CONTADOR DE NO LEÍDOS 
+    // ============================================
+    async incrementUnreadCount(chatId: string, userId: string): Promise<number> {
+        const UnreadCount = require('../models/UnreadCount').default;
+        
+        try {
+            let unread = await UnreadCount.findOne({
+                where: {
+                    chat_id: chatId,
+                    user_id: userId
+                }
+            });
+
+            if (unread) {
+                unread.count += 1;
+                await unread.save();
+            } else {
+                unread = await UnreadCount.create({
+                    id: uuidv4(),
+                    chat_id: chatId,
+                    user_id: userId,
+                    count: 1
+                });
+            }
+
+            return unread.count;
+        } catch (error) {
+            console.error('Error al incrementar no leídos:', error);
+            return await this.getUnreadCount(chatId, userId);
+        }
+    }
+
+    // ============================================
+    // 13. REINICIAR CONTADOR DE NO LEÍDOS 
+    // ============================================
+    async resetUnreadCount(chatId: string, userId: string): Promise<void> {
+        const UnreadCount = require('../models/UnreadCount').default;
+        
+        try {
+            await UnreadCount.update(
+                { count: 0 },
+                {
+                    where: {
+                        chat_id: chatId,
+                        user_id: userId
+                    }
+                }
+            );
+        } catch (error) {
+            console.error('Error al resetear no leídos:', error);
+        }
     }
 
     // ============================================

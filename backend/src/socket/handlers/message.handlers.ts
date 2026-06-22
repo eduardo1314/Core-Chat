@@ -8,7 +8,7 @@ import logger from '../../utils/logger';
 export const setupMessageHandlers = (io: Server, socket: Socket) => {
     
     // ==========================================
-    // 1. ENVIAR MENSAJE 
+    // 1. ENVIAR MENSAJE
     // ==========================================
     socket.on('send-message', async (data) => {
         try {
@@ -22,7 +22,6 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
                 return;
             }
 
-            // Validar duplicados
             const uniqueId = messageId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             if (processedMessages.has(uniqueId)) {
                 socket.emit('message-error', { error: 'Mensaje duplicado', tempId });
@@ -31,7 +30,6 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
             processedMessages.set(uniqueId, Date.now());
             setTimeout(() => processedMessages.delete(uniqueId), 10000);
 
-            // Guardar mensaje en BD
             const message = await Message.create({
                 id: uuidv4(),
                 chat_id: chatId,
@@ -56,29 +54,24 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
                 return;
             }
 
-            // Actualizar fecha del chat
             await Chat.update(
                 { updated_at: new Date() },
                 { where: { id: chatId } }
             );
 
-            // Preparar datos del mensaje
             const messageData = {
                 ...fullMessage.toJSON(),
                 tempId: tempId || null,
                 _serverTimestamp: new Date().toISOString()
             };
 
-            // Emitir a todos EXCEPTO al emisor
             socket.to(chatId).emit('new-message', messageData);
-
-            // Confirmar al emisor
             socket.emit('message-sent', {
                 ...messageData,
+                tempId: tempId,
                 _confirmed: true
             });
 
-            // Actualizar chat (para todos)
             io.to(chatId).emit('chat-updated', {
                 chatId,
                 lastMessage: content,
@@ -88,20 +81,13 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
                 username
             });
 
-            // ==========================================
-            // EMITIR NO LEÍDOS A TODOS LOS PARTICIPANTES (EXCEPTO EL EMISOR)
-            // ==========================================
             const participants = await Participant.findAll({
                 where: { chat_id: chatId, user_id: { [Op.ne]: userId } }
             });
 
-            console.log(`🔴 [BACKEND] Participantes para no leídos:`, participants.map(p => p.user_id));
-
             for (const p of participants) {
                 await emitUnreadUpdate(io, chatId, p.user_id);
             }
-
-            logger.info(`✅ Mensaje emitido al chat ${chatId}`);
 
         } catch (error) {
             logger.error('❌ Error al enviar mensaje:', error);
@@ -120,8 +106,25 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
             const { chatId, messageId } = data;
             if (!chatId || !messageId) return;
 
+            const userId = socket.data.userId;
+            if (!userId) {
+                socket.emit('error', { error: 'Usuario no autenticado' });
+                return;
+            }
+
             const message = await Message.findByPk(messageId);
-            if (!message || message.user_id !== socket.data.userId) {
+            if (!message) {
+                socket.emit('error', { error: 'Mensaje no encontrado' });
+                return;
+            }
+
+            const isOwner = message.user_id === userId;
+            const participant = await Participant.findOne({
+                where: { chat_id: chatId, user_id: userId }
+            });
+            const isAdmin = participant?.role === 'admin';
+            
+            if (!isOwner && !isAdmin) {
                 socket.emit('error', { error: 'No autorizado' });
                 return;
             }
@@ -134,20 +137,17 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
             io.to(chatId).emit('message-deleted', {
                 chatId,
                 messageId,
-                userId: socket.data.userId,
+                userId: userId,
                 timestamp: new Date().toISOString()
             });
 
-            // Actualizar no leídos después de eliminar
             const participants = await Participant.findAll({
-                where: { chat_id: chatId, user_id: { [Op.ne]: socket.data.userId } }
+                where: { chat_id: chatId, user_id: { [Op.ne]: userId } }
             });
 
             for (const p of participants) {
                 await emitUnreadUpdate(io, chatId, p.user_id);
             }
-
-            logger.info(`🗑️ Mensaje ${messageId} eliminado del chat ${chatId}`);
 
         } catch (error) {
             logger.error('Error al eliminar mensaje:', error);
@@ -161,10 +161,11 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
     socket.on('typing', (data) => {
         try {
             const { chatId, isTyping } = data;
-            if (!chatId || !socket.data.userId) return;
+            const userId = socket.data.userId;
+            if (!chatId || !userId) return;
 
             socket.to(chatId).emit('user-typing', {
-                userId: socket.data.userId,
+                userId: userId,
                 isTyping,
                 chatId,
                 timestamp: new Date().toISOString()
@@ -175,18 +176,69 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
     });
 
     // ==========================================
-    // 4. FUNCIÓN AUXILIAR: EMITIR NO LEÍDOS
+    // 4. MARCAR COMO LEÍDO
     // ==========================================
-    const emitUnreadUpdate = async (io: Server, chatId: string, userId: string) => {
+    socket.on('mark-as-read', async (data) => {
         try {
-            console.log(`🔴 [emitUnreadUpdate] Iniciando para chat: ${chatId}, usuario: ${userId}`);
+            const { chatId } = data;
+            const userId = socket.data.userId;
             
+            if (!chatId || !userId) {
+                socket.emit('error', { error: 'Datos incompletos' });
+                return;
+            }
+            
+            await Participant.update(
+                { last_read_at: new Date() },
+                { where: { chat_id: chatId, user_id: userId } }
+            );
+            
+            await Message.update(
+                { is_read: true },
+                {
+                    where: {
+                        chat_id: chatId,
+                        user_id: { [Op.ne]: userId },
+                        is_read: false
+                    }
+                }
+            );
+            
+            io.to(`user_${userId}`).emit('unread-update', {
+                chatId: chatId,
+                count: 0
+            });
+            
+            io.to(chatId).emit('messages-read', {
+                chatId,
+                userId
+            });
+
+        } catch (error) {
+            logger.error('Error en mark-as-read:', error);
+            socket.emit('error', { error: 'Error al marcar como leído' });
+        }
+    });
+
+    // ==========================================
+    // 5. OBTENER CONTEO DE NO LEÍDOS
+    // ==========================================
+    socket.on('get-unread-count', async (data) => {
+        try {
+            const { chatId } = data;
+            const userId = socket.data.userId;
+            
+            if (!chatId || !userId) {
+                socket.emit('error', { error: 'Datos incompletos' });
+                return;
+            }
+
             const participant = await Participant.findOne({
                 where: { chat_id: chatId, user_id: userId }
             });
 
             if (!participant) {
-                console.log(`🔴 [emitUnreadUpdate] Participante NO encontrado para ${userId}`);
+                socket.emit('unread-count-response', { chatId, count: 0 });
                 return;
             }
 
@@ -201,40 +253,107 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
                 }
             });
 
-            console.log(`🔴 [emitUnreadUpdate] unreadCount calculado: ${unreadCount}`);
+            socket.emit('unread-count-response', {
+                chatId,
+                count: unreadCount
+            });
 
-            const userSocketIds = userSockets.get(userId);
-            
-            if (userSocketIds && userSocketIds.size > 0) {
-                const connectedSockets: string[] = [];
-                for (const socketId of userSocketIds) {
-                    const socket = io.sockets.sockets.get(socketId);
-                    if (socket && socket.connected) {
-                        connectedSockets.push(socketId);
-                    } else {
-                        userSocketIds.delete(socketId);
-                        console.log(`🔴 [emitUnreadUpdate] Socket ${socketId} desconectado, eliminando...`);
-                    }
-                }
-
-                if (userSocketIds.size === 0) {
-                    userSockets.delete(userId);
-                }
-
-                console.log(`🔴 [emitUnreadUpdate] Sockets conectados:`, connectedSockets);
-
-                for (const socketId of connectedSockets) {
-                    io.to(socketId).emit('unread-update', {
-                        chatId,
-                        count: unreadCount
-                    });
-                    console.log(`🔴 [emitUnreadUpdate] Emitido a socket ${socketId}`);
-                }
-            } else {
-                console.log(`🔴 [emitUnreadUpdate] No hay sockets para el usuario ${userId}`);
-            }
         } catch (error) {
-            console.error('❌ Error al emitir no leídos:', error);
+            logger.error('Error en get-unread-count:', error);
+            socket.emit('error', { error: 'Error al obtener no leídos' });
         }
-    };
+    });
+
+    // ==========================================
+    // 6. OBTENER TOTAL DE NO LEÍDOS
+    // ==========================================
+    socket.on('get-total-unread', async () => {
+        try {
+            const userId = socket.data.userId;
+            
+            if (!userId) {
+                socket.emit('total-unread-response', { total: 0 });
+                return;
+            }
+
+            const participants = await Participant.findAll({
+                where: { user_id: userId },
+                attributes: ['chat_id', 'last_read_at']
+            });
+
+            let totalUnread = 0;
+
+            for (const p of participants) {
+                const lastReadAt = p.last_read_at || new Date(0);
+                const count = await Message.count({
+                    where: {
+                        chat_id: p.chat_id,
+                        user_id: { [Op.ne]: userId },
+                        is_read: false,
+                        created_at: { [Op.gt]: lastReadAt }
+                    }
+                });
+                totalUnread += count;
+            }
+
+            socket.emit('total-unread-response', {
+                total: totalUnread
+            });
+
+        } catch (error) {
+            logger.error('Error en get-total-unread:', error);
+            socket.emit('error', { error: 'Error al obtener total de no leídos' });
+        }
+    });
+};
+
+// ==========================================
+// FUNCIÓN AUXILIAR: EMITIR NO LEÍDOS
+// ==========================================
+export const emitUnreadUpdate = async (io: Server, chatId: string, userId: string) => {
+    try {
+        const participant = await Participant.findOne({
+            where: { chat_id: chatId, user_id: userId }
+        });
+
+        if (!participant) return;
+
+        const lastReadAt = participant.last_read_at || new Date(0);
+
+        const unreadCount = await Message.count({
+            where: {
+                chat_id: chatId,
+                user_id: { [Op.ne]: userId },
+                is_read: false,
+                created_at: { [Op.gt]: lastReadAt }
+            }
+        });
+
+        const userSocketIds = userSockets.get(userId);
+        
+        if (userSocketIds && userSocketIds.size > 0) {
+            const connectedSockets: string[] = [];
+            for (const socketId of userSocketIds) {
+                const socket = io.sockets.sockets.get(socketId);
+                if (socket && socket.connected) {
+                    connectedSockets.push(socketId);
+                } else {
+                    userSocketIds.delete(socketId);
+                }
+            }
+
+            if (userSocketIds.size === 0) {
+                userSockets.delete(userId);
+            }
+
+            for (const socketId of connectedSockets) {
+                io.to(socketId).emit('unread-update', {
+                    chatId,
+                    count: unreadCount
+                });
+            }
+        }
+    } catch (error) {
+        logger.error('❌ Error al emitir no leídos:', error);
+    }
 };

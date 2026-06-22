@@ -9,6 +9,7 @@ import FriendMenu from '../common/FriendMenu';
 import { formatLastSeen } from '../../../utils/formatLastSeen';
 import { Chat } from "../../types";
 import { useSocket } from '../../hooks/useSocket';
+import ChatItem from './ChatItem';
 
 // ============================================
 // TIPOS E INTERFACES
@@ -51,8 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         loadArchivedChats
     } = useChats();
 
-    // Obtener eventos de socket
-    const { onUnreadUpdate, offUnreadUpdate } = useSocket();
+    const { onUnreadUpdate, offUnreadUpdate, markAsRead, socket, onNewMessage, offNewMessage } = useSocket();
 
     // ============================================
     // ESTADOS LOCALES
@@ -102,45 +102,87 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
     }, [unreadCounts]);
 
     // ============================================
-    // ESCUCHAR ACTUALIZACIONES DE NO LEÍDOS EN TIEMPO REAL 
+    // ACTUALIZAR CONTADOR DE NO LEÍDOS
+    // ============================================
+    const updateUnreadCount = useCallback((chatId: string, count: number) => {
+        if (selectedChatId === chatId) {
+            count = 0;
+        }
+        
+        setUnreadCounts(prev => {
+            const newMap = new Map(prev);
+            if (count > 0) {
+                newMap.set(chatId, count);
+            } else {
+                newMap.delete(chatId);
+            }
+            
+            let total = 0;
+            for (const c of newMap.values()) {
+                total += c;
+            }
+            setTotalUnread(total);
+            
+            return newMap;
+        });
+    }, [selectedChatId]);
+
+    // ============================================
+    // ESCUCHAR UNREAD-UPDATE Y RECARGAR CHATS
     // ============================================
     useEffect(() => {
-        console.log('🟢 [Sidebar] useEffect de unreadUpdate registrado');
-
-        const handleUnreadUpdate = (data: { chatId: string; count: number }) => {
-            console.log('📢 [Sidebar] No leídos actualizado en tiempo real:', data);
-            
-            setUnreadCounts(prev => {
-                const newMap = new Map(prev);
-                if (data.count > 0) {
-                    newMap.set(data.chatId, data.count);
-                } else {
-                    newMap.delete(data.chatId);
-                }
-                
-                console.log('📢 [Sidebar] unreadCounts actualizado:', Array.from(newMap.entries()));
-                
-                // Recalcular total inmediatamente
-                let total = 0;
-                for (const count of newMap.values()) {
-                    total += count;
-                }
-                setTotalUnread(total);
-                
-                return newMap;
-            });
+        const handleUnreadUpdate = async (data: { chatId: string; count: number }) => {
+            if (data.count > 0) {
+                await loadActiveChats();
+            }
+            updateUnreadCount(data.chatId, data.count);
         };
 
         onUnreadUpdate(handleUnreadUpdate);
 
         return () => {
-            console.log('🔴 [Sidebar] Removiendo listener de unreadUpdate');
             offUnreadUpdate(handleUnreadUpdate);
         };
-    }, [onUnreadUpdate, offUnreadUpdate]);
+    }, [onUnreadUpdate, offUnreadUpdate, updateUnreadCount, loadActiveChats]);
 
     // ============================================
-    // Cargar conteo de no leídos (SOLO INICIAL)
+    // ESCUCHAR NUEVOS MENSAJES
+    // ============================================
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleNewMessage = async (data: any) => {
+            const chatId = data.chat_id || data.chatId;
+            if (!chatId) return;
+
+            const chatExists = activeChats.some(chat => chat.id === chatId);
+            if (!chatExists) {
+                await loadActiveChats();
+            }
+        };
+
+        onNewMessage(handleNewMessage);
+
+        return () => {
+            offNewMessage(handleNewMessage);
+        };
+    }, [socket, onNewMessage, offNewMessage, activeChats, loadActiveChats]);
+
+    // ============================================
+    // RESPALDO: Recargar chats cada 30 segundos
+    // ============================================
+    useEffect(() => {
+        const interval = setInterval(() => {
+            loadActiveChats();
+        }, 30000);
+
+        return () => {
+            clearInterval(interval);
+        };
+    }, [loadActiveChats]);
+
+    // ============================================
+    // Cargar conteo de no leídos (INICIAL)
     // ============================================
     useEffect(() => {
         const loadUnreadCounts = async () => {
@@ -202,7 +244,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         });
     }, [activeChats, archivedChats, user]);
 
-
     // Cargar nombres personalizados
     useEffect(() => {
         const saved = localStorage.getItem('customFriendNames');
@@ -228,10 +269,9 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
     }, [friends]);
 
     // ============================================
-    // FUNCIONES PRINCIPALES
+    // FUNCIONES PRINCIPALES para ver info de usuario
     // ============================================
 
-    // Obtener información del amigo desde un chat
     const getFriendInfoFromChat = useCallback((chat: Chat) => {
         if (chat.type !== 'private') {
             return { 
@@ -293,7 +333,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         return { displayName, avatar, avatarBg, friendId, isOnline, lastSeen };
     }, [user, customNames, friends, isActuallyOnline]);
 
-    // Iniciar chat con un amigo 
+
+
     const startChat = useCallback(async (friendId: string, friendName: string) => {
         if (!friendId || isCreatingChat) return;
 
@@ -327,6 +368,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
                 const lastSeen = friendData?.friend?.last_seen || null;
                 const isOnline = isActuallyOnline(status, lastSeen);
                 
+                if (socket) {
+                    markAsRead(existingChat.id);
+                }
+                
                 onSelectChat(
                     existingChat.id,
                     friendName,
@@ -357,9 +402,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         } finally {
             setIsCreatingChat(false);
         }
-    }, [findExistingPrivateChat, blockedUsers, createChat, unarchiveChat, loadActiveChats, loadArchivedChats, friends, onSelectChat, isActuallyOnline, archivedChats]);
+    }, [findExistingPrivateChat, blockedUsers, createChat, unarchiveChat, loadActiveChats, loadArchivedChats, friends, onSelectChat, isActuallyOnline, archivedChats, socket, markAsRead]);
 
-    // Editar nombre de amigo
     const handleEditName = useCallback((friendId: string, newName: string) => {
         setCustomNames(prev => new Map(prev).set(friendId, newName));
         const saved = JSON.parse(localStorage.getItem('customFriendNames') || '{}');
@@ -367,7 +411,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         localStorage.setItem('customFriendNames', JSON.stringify(saved));
     }, []);
 
-    // Eliminar chat
     const handleDeleteChat = useCallback(async (chatId: string, chatName: string) => {
         if (!window.confirm(`¿Estás seguro de que quieres eliminar el chat con ${chatName}?`)) return;
 
@@ -376,13 +419,12 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
             await loadActiveChats();
             await loadArchivedChats();
             if (selectedChatId === chatId) onSelectChat(null);
-            alert(' Chat eliminado');
+            alert('✅ Chat eliminado');
         } catch (error) {
-            alert(' Error al eliminar chat');
+            alert('❌ Error al eliminar chat');
         }
     }, [selectedChatId, onSelectChat, loadActiveChats, loadArchivedChats]);
 
-    // Bloquear usuario
     const handleBlockUser = useCallback(async (friendId: string | undefined, friendName: string) => {
         if (!friendId) {
             alert('❌ Error: ID de usuario no válido');
@@ -400,7 +442,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         }
     }, [blockUser, loadFriends]);
 
-    // Archivar chat
     const handleArchiveChat = useCallback(async (chatId: string) => {
         await archiveChat(chatId);
         await loadActiveChats();
@@ -408,7 +449,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         if (selectedChatId === chatId) onSelectChat(null);
     }, [archiveChat, loadActiveChats, loadArchivedChats, selectedChatId, onSelectChat]);
 
-    // Desarchivar chat
     const handleUnarchiveChat = useCallback(async (chatId: string) => {
         await unarchiveChat(chatId);
         await loadActiveChats();
@@ -416,7 +456,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         onSelectChat(chatId);
     }, [unarchiveChat, loadActiveChats, loadArchivedChats, onSelectChat]);
 
-    // Buscar usuario
     const handleSearchUser = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
         if (!friendEmail) return;
@@ -439,7 +478,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         }
     }, [friendEmail]);
 
-    // Enviar solicitud de amistad
     const handleSendFriendRequest = useCallback(async (friendId: string) => {
         try {
             await sendRequest(friendId);
@@ -452,116 +490,53 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
         }
     }, [sendRequest]);
 
-    // ============================================
-    // MEMOIZACIÓN
-    // ============================================
-
     const acceptedFriends = useMemo(() =>
         friends.filter(f => f.status === 'accepted'),
         [friends]
     );
 
-    // ============================================
-    // RENDERIZADO DE LISTAS
-    // ============================================
-
     const renderChatList = useCallback((chats: any[], showArchiveButton = true) => (
-        <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {chats.length === 0 ? (
-                <div className="p-8 text-center text-gray-400 text-sm">
-                    <div className="text-4xl mb-2">{showArchiveButton ? '💬' : '📦'}</div>
-                    <p>{showArchiveButton ? 'No hay chats aún' : 'No hay chats archivados'}</p>
-                    {showArchiveButton && <p className="text-xs mt-1">Agrega amigos para empezar</p>}
-                </div>
-            ) : (
-                chats.map(chat => {
-                    const { displayName, avatar, avatarBg, isOnline, lastSeen } = getFriendInfoFromChat(chat);
-                    const unreadCount = unreadCounts.get(chat.id) || 0;
+    <div className="divide-y divide-gray-100 dark:divide-gray-800">
+        {chats.length === 0 ? (
+            <div className="p-50 text-center text-gray-400 text-sm">
+                <div className="text-4xl mb-4">{showArchiveButton ? '💬' : '📦'}</div>
+                <p>{showArchiveButton ? 'No hay chats aún' : 'No hay chats archivados'}</p>
+                {showArchiveButton && <p className="text-xs mt-1">Agrega amigos para empezar</p>}
+            </div>
+        ) : (
+            chats.map(chat => {
+                const { displayName, avatar, avatarBg, isOnline, lastSeen } = getFriendInfoFromChat(chat);
+                const unreadCount = unreadCounts.get(chat.id) || 0;
 
-                    return (
-                        <div
-                            key={chat.id}
-                            className="flex items-center justify-between group hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-                        >
-                            <div
-                                onClick={() => {
-                                    clearUnreadCount(chat.id);
-                                    if (onClearUnread) {
-                                        onClearUnread(chat.id);
-                                    }
-                                    onSelectChat(chat.id, displayName, isOnline, lastSeen);
-                                }}
-                                className={`flex items-center gap-3 p-4 flex-1 cursor-pointer ${
-                                    selectedChatId === chat.id ? 'bg-blue-50 dark:bg-blue-900/30' : ''
-                                }`}
-                            >
-                                <div className="relative">
-                                    <div className={`w-12 h-12 bg-gradient-to-r ${avatarBg} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md`}>
-                                        {avatar === '👤' || avatar === '💬' ? avatar : avatar}
-                                    </div>
-                                    {unreadCount > 0 && (
-                                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
-                                            {unreadCount > 9 ? '9+' : unreadCount}
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-center">
-                                        <h3 className="font-medium text-gray-800 dark:text-white truncate">
-                                            {displayName}
-                                        </h3>
-                                        {chat.lastMessage && (
-                                            <span className="text-xs text-gray-400 flex-shrink-0 ml-2">
-                                                {new Date(chat.lastMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </span>
-                                        )}
-                                    </div>
-                                    {chat.lastMessage && (
-                                        <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                                            {chat.lastMessage.sender?.id === user?.id ? 'Tú: ' : ''}
-                                            {chat.lastMessage.content}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="flex gap-1 mr-2 flex-shrink-0">
-                                {showArchiveButton ? (
-                                    <>
-                                        <button
-                                            onClick={() => handleDeleteChat(chat.id, displayName)}
-                                            className="p-2 text-gray-400 hover:text-red-500 transition opacity-0 group-hover:opacity-100"
-                                            title="Eliminar chat"
-                                        >
-                                            🗑️
-                                        </button>
-                                        <button
-                                            onClick={() => handleArchiveChat(chat.id)}
-                                            className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 opacity-0 group-hover:opacity-100 transition"
-                                            title="Archivar"
-                                        >
-                                            📦
-                                        </button>
-                                    </>
-                                ) : (
-                                    <button
-                                        onClick={() => handleUnarchiveChat(chat.id)}
-                                        className="p-2 text-gray-400 hover:text-green-500 transition opacity-0 group-hover:opacity-100"
-                                        title="Desarchivar"
-                                    >
-                                        📂
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })
-            )}
-        </div>
-    ), [getFriendInfoFromChat, onSelectChat, selectedChatId, unreadCounts, user, handleDeleteChat, handleArchiveChat, handleUnarchiveChat, clearUnreadCount, onClearUnread]);
-
-    // ============================================
-    // RENDER
-    // ============================================
+                return (
+                    <ChatItem
+                        key={chat.id}
+                        chat={chat}
+                        displayName={displayName}
+                        avatar={avatar}
+                        avatarBg={avatarBg}
+                        isOnline={isOnline}
+                        lastSeen={lastSeen}
+                        unreadCount={unreadCount}
+                        selectedChatId={selectedChatId}
+                        user={user}
+                        onSelectChat={onSelectChat}
+                        onClearUnread={clearUnreadCount}
+                        onMarkAsRead={(chatId) => {
+                            if (socket) {
+                                markAsRead(chatId);
+                            }
+                        }}
+                        onArchiveChat={handleArchiveChat}
+                        onUnarchiveChat={handleUnarchiveChat}
+                        onDeleteChat={handleDeleteChat}
+                        showArchiveButton={showArchiveButton}
+                    />
+                );
+            })
+        )}
+    </div>
+), [getFriendInfoFromChat, onSelectChat, selectedChatId, unreadCounts, user, handleDeleteChat, handleArchiveChat, handleUnarchiveChat, clearUnreadCount, onClearUnread, socket, markAsRead]);
 
     if (friendsLoading) {
         return (
@@ -575,38 +550,38 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
 
     return (
         <div className="w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
-            {/* Header con tabs */}
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                <div className="flex gap-2 mb-3">
-                    {[
-                        { id: 'chats', label: '💬 Chats', badge: totalUnread },
-                        { id: 'friends', label: '👥 Amigos' },
-                        { id: 'requests', label: '📨 Solicitudes', badge: pendingRequests.length },
-                        { id: 'archived', label: '📦 Archivados' }
-                    ].map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => {
-                                setActiveTab(tab.id as any);
-                                if (tab.id === 'requests') loadPendingRequests();
-                            }}
-                            className={`flex-1 py-2 text-sm font-medium rounded-lg transition relative ${
-                                activeTab === tab.id
-                                    ? 'bg-blue-500 text-white'
-                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                            }`}
-                        >
-                            {tab.label}
-                            {tab.badge ? (
-                                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center animate-pulse">
-                                    {tab.badge > 9 ? '9+' : tab.badge}
-                                </span>
-                            ) : null}
-                        </button>
-                    ))}
-                </div>
+                <div className="flex gap-2 mb-2">
+    {[
+        { id: 'chats', label: '💬 Chats', badge: totalUnread },
+        { id: 'friends', label: '👥 Amigos' },
+        { id: 'requests', label: '📨 Solicitudes', badge: pendingRequests.length },
+        { id: 'archived', label: '📦 Archivados' }
+    ].map(tab => (
+        <button
+            key={tab.id}
+            onClick={() => {
+                setActiveTab(tab.id as any);
+                if (tab.id === 'requests') loadPendingRequests();
+            }}
+            className={`flex-1 py-2  font-medium rounded-lg transition relative flex items-center justify-center ${
+                activeTab === tab.id
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+            }`}
+        >
+            <span className="flex items-center justify-center gap-1">
+                {tab.label}
+                {tab.badge ? (
+                    <span className="ml-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center px-1.5 animate-pulse">
+                        {tab.badge > 9 ? '9+' : tab.badge}
+                    </span>
+                ) : null}
+            </span>
+        </button>
+    ))}
+</div>
 
-                {/* Botón agregar amigo */}
                 <button
                     onClick={() => {
                         setShowAddFriend(!showAddFriend);
@@ -622,7 +597,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
                     Agregar Amigo
                 </button>
 
-                {/* Panel de búsqueda */}
                 {showAddFriend && (
                     <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">🔍 Busca por email</p>
@@ -676,12 +650,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
                 )}
             </div>
 
-            {/* Contenido según tab activo */}
             <div className="flex-1 overflow-y-auto">
                 {activeTab === 'chats' && renderChatList(activeChats, true)}
                 {activeTab === 'archived' && renderChatList(archivedChats, false)}
 
-                {/* Tab Amigos */}
                 {activeTab === 'friends' && (
                     <div className="divide-y divide-gray-100 dark:divide-gray-800">
                         {acceptedFriends.length === 0 ? (
@@ -746,7 +718,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId, onClear
                     </div>
                 )}
 
-                {/* Tab Solicitudes */}
                 {activeTab === 'requests' && (
                     <div>
                         {pendingRequests.length === 0 && sentRequests.length === 0 ? (

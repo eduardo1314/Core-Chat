@@ -1,9 +1,8 @@
-// src/controllers/message.controller.ts
 import { Request, Response } from 'express';
 import { messageService } from '../services/message.service';
 
 // ============================================
-// 1. ENVIAR MENSAJE
+// 1. ENVIAR MENSAJE 
 // ============================================
 export const sendMessage = async (req: any, res: Response) => {
     try {
@@ -19,10 +18,16 @@ export const sendMessage = async (req: any, res: Response) => {
             metadata
         });
         
-        //  Emitir por WebSocket
+        // Obtener el chat y sus participantes
+        const chat = await messageService.getChatWithParticipants(chatId);
+        
+        // Emitir por WebSocket
         const io = req.app.get('io');
         if (io) {
+            // Emitir el nuevo mensaje
             io.to(chatId).emit('new-message', message);
+            
+            // Emitir actualización del chat
             io.to(chatId).emit('chat-updated', {
                 chatId,
                 lastMessage: content,
@@ -30,6 +35,25 @@ export const sendMessage = async (req: any, res: Response) => {
                 timestamp: new Date().toISOString(),
                 userId: userId
             });
+            
+            //  Emitir actualización de no leídos para cada participante
+            if (chat && chat.participants) {
+                for (const participant of chat.participants) {
+                    // Si el participante no es el remitente
+                    if (participant.userId !== userId) {
+                        // Obtener el conteo actual de no leídos para este usuario
+                        const unreadCount = await messageService.getUnreadCount(chatId, participant.userId);
+                        
+                        console.log(`📢 Emitiendo unread-update para usuario ${participant.userId}: ${unreadCount}`);
+                        
+                        // Emitir al usuario específico
+                        io.to(`user_${participant.userId}`).emit('unread-update', {
+                            chatId: chatId,
+                            count: unreadCount
+                        });
+                    }
+                }
+            }
         }
         
         res.status(201).json({ success: true, data: message });
@@ -57,6 +81,20 @@ export const getMessages = async (req: any, res: Response) => {
             offset
         );
         
+        // Marcar mensajes como leídos cuando el usuario los ve
+        if (result.messages && result.messages.length > 0) {
+            await messageService.markAsRead(chatId, userId);
+            
+            // Emitir evento de lectura
+            const io = req.app.get('io');
+            if (io) {
+                io.to(`user_${userId}`).emit('unread-update', {
+                    chatId: chatId,
+                    count: 0
+                });
+            }
+        }
+        
         res.json({ 
             success: true, 
             data: result.messages,
@@ -72,7 +110,7 @@ export const getMessages = async (req: any, res: Response) => {
 };
 
 // ============================================
-// 3. OBTENER ÚLTIMOS MENSAJES (CARGA INICIAL)
+// 3. OBTENER ÚLTIMOS MENSAJES 
 // ============================================
 export const getLatestMessages = async (req: any, res: Response) => {
     try {
@@ -173,10 +211,10 @@ export const markAsRead = async (req: any, res: Response) => {
                 userId: userId
             });
             
-            //  Actualizar no leídos 
-            io.to(chatId).emit('unread-update', {
+            //  🔥 Actualizar no leídos para el usuario
+            io.to(`user_${userId}`).emit('unread-update', {
                 chatId,
-                count: 0  // ← Después de marcar como leídos, el conteo es 0
+                count: 0
             });
         }
         
@@ -186,6 +224,7 @@ export const markAsRead = async (req: any, res: Response) => {
         res.status(400).json({ success: false, error: error.message });
     }
 };
+
 // ============================================
 // 7. OBTENER CONTEO DE NO LEÍDOS (UN CHAT)
 // ============================================

@@ -14,7 +14,7 @@ export const formatLastSeen = (lastSeen: string | null | undefined): string => {
         return 'En línea';
     }
     
-    // Formatear hora: 12:40 PM
+    // Formatear hora: 
     const timeStr = date.toLocaleTimeString('es-ES', {
         hour: '2-digit',
         minute: '2-digit',

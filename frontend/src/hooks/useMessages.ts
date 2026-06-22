@@ -63,7 +63,10 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         offMessageDeleted,
         onMessageEdited,
         offMessageEdited,
-        emitTyping: emitTypingSocket
+        emitTyping: emitTypingSocket,
+            onUnreadUpdate,  
+    offUnreadUpdate   
+
     } = useSocket();
     
     const { updateChat } = useChats();
@@ -173,7 +176,28 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
     }, [chatId, isConnected, joinChat, leaveChat, loadInitialMessages]);
 
     // ============================================
-    // 4. ESCUCHAR NUEVOS MENSAJES (PARA RECEPTOR)
+//  ESCUCHAR ACTUALIZACIONES DE NO LEÍDOS
+// ============================================
+useEffect(() => {
+    if (!chatId || !isConnected) return;
+
+    const handleUnreadUpdate = (data: { chatId: string; count: number }) => {
+        if (data.chatId !== chatId) return;
+        
+        if (data.count > 0 && chatId) {
+            markAsReadService(chatId);
+        }
+    };
+
+    onUnreadUpdate(handleUnreadUpdate);
+
+    return () => {
+        offUnreadUpdate(handleUnreadUpdate);
+    };
+}, [chatId, isConnected, onUnreadUpdate, offUnreadUpdate]);
+
+    // ============================================
+    // 4. ESCUCHAR NUEVOS MENSAJES el que recibe
     // ============================================
     useEffect(() => {
         if (!chatId || !isConnected) return;
@@ -181,20 +205,16 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         const handleNewMessage = (message: Message) => {
             if (message.chat_id !== chatId) return;
             
-            // Si es un mensaje temporal del emisor, NO lo procesamos aquí
+            // Si es un mensaje temporal del emisor, NO lo procesamos aqui
             if (message.tempId && pendingMessagesRef.current.has(message.tempId)) {
-                console.log('🔄 Mensaje temporal ya está en pending, ignorando new-message');
                 return;
             }
 
             //  Prevenir duplicados
             if (messageIdsRef.current.has(message.id)) {
-                console.log('⚠️ Mensaje duplicado ignorado:', message.id);
                 return;
             }
 
-            //  Agregar nuevo mensaje (solo para receptores)
-            console.log('📨 Nuevo mensaje recibido:', message.id);
             messageIdsRef.current.add(message.id);
             setMessages(prev => [...prev, message]);
             
@@ -227,7 +247,7 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
     }, [chatId, isConnected, onNewMessage, offNewMessage, updateChat]);
 
     // ============================================
-    // 5. CONFIRMACIÓN DE MENSAJE ENVIADO (PARA EMISOR)
+    // 5. CONFIRMACIÓN DE MENSAJE ENVIADO 
     // ============================================
     useEffect(() => {
         console.log('📝 Registrando listener message-sent');
@@ -491,6 +511,8 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         messageIdsRef.current.clear();
         pendingMessagesRef.current.clear();
     }, []);
+
+
 
     return {
         messages,

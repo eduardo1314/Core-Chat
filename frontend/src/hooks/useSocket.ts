@@ -14,7 +14,7 @@ interface UseSocketReturn {
     onMessageSent: (callback: (data: any) => void) => void;
     offMessageSent: (callback?: (data: any) => void) => void;
     
-    //  EVENTOS ONLINE/OFFLINE
+    // EVENTOS ONLINE/OFFLINE
     onUserOnline: (callback: (data: any) => void) => void;
     offUserOnline: (callback?: (data: any) => void) => void;
     onUserOffline: (callback: (data: any) => void) => void;
@@ -23,26 +23,33 @@ interface UseSocketReturn {
     offUserStatusUpdated: (callback?: (data: any) => void) => void;
     emitUserOffline: (userId: string) => void;
 
-    //eventos de bloqueo
+    // Eventos de bloqueo
     onUserBlocked: (callback: (data: any) => void) => void;
     offUserBlocked: (callback?: (data: any) => void) => void;
     onFriendStatusChanged: (callback: (data: any) => void) => void;
     offFriendStatusChanged: (callback?: (data: any) => void) => void;
 
-    
-    //  EVENTOS PARA MENSAJES
+    // EVENTOS PARA MENSAJES
     onMessageDeleted: (callback: (data: any) => void) => void;   
     offMessageDeleted: (callback?: (data: any) => void) => void; 
     onMessageEdited: (callback: (data: any) => void) => void;    
     offMessageEdited: (callback?: (data: any) => void) => void;  
     
-    //  EVENTO PARA "ESCRIBIENDO..."
+    // EVENTO PARA "ESCRIBIENDO..."
     onUserTyping: (callback: (data: any) => void) => void;       
     offUserTyping: (callback?: (data: any) => void) => void;   
     
-    //no leidos
-     onUnreadUpdate: (callback: (data: any) => void) => void;
+    // No leídos
+    onUnreadUpdate: (callback: (data: any) => void) => void;
     offUnreadUpdate: (callback?: (data: any) => void) => void;
+
+    //  MÉTODOS PARA NO LEÍDOS
+    markAsRead: (chatId: string) => void;
+    getUnreadCount: (chatId: string) => void;
+    getTotalUnread: () => void;
+    
+    //MÉTODO PARA SET USER
+    setUser: (userId: string) => void;
 }
 
 export const useSocket = (): UseSocketReturn => {
@@ -54,9 +61,9 @@ export const useSocket = (): UseSocketReturn => {
     const newMessageCallbacks = useRef<Set<(data: any) => void>>(new Set());
     const messageSentCallbacks = useRef<Set<(data: any) => void>>(new Set());
 
-    //funcion oara bloquear y desbloquear
+    // Función para bloquear y desbloquear
     const userBlockedCallbacks = useRef<Set<(data: any) => void>>(new Set());
-   const friendStatusChangedCallbacks = useRef<Set<(data: any) => void>>(new Set());
+    const friendStatusChangedCallbacks = useRef<Set<(data: any) => void>>(new Set());
     
     // Callbacks online/offline
     const userOnlineCallbacks = useRef<Set<(data: any) => void>>(new Set());
@@ -69,7 +76,10 @@ export const useSocket = (): UseSocketReturn => {
     const userTypingCallbacks = useRef<Set<(data: any) => void>>(new Set());
 
     // Callbacks de no leídos
-    const unreadUpdateCallbacks = useRef<Set<(data: any) => void>>(new Set())
+    const unreadUpdateCallbacks = useRef<Set<(data: any) => void>>(new Set());
+    // callbacks para respuestas de no leídos
+    const unreadCountResponseCallbacks = useRef<Set<(data: any) => void>>(new Set());
+    const totalUnreadResponseCallbacks = useRef<Set<(data: any) => void>>(new Set());
 
     useEffect(() => {
         const socketUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
@@ -120,19 +130,19 @@ export const useSocket = (): UseSocketReturn => {
             userStatusUpdatedCallbacks.current.forEach(cb => cb(data));
         });
 
-       //EVENTOS DE BLOQUEO Y DESBLOQUEI
+        // EVENTOS DE BLOQUEO Y DESBLOQUEO
         socketRef.current.on('user-blocked', (data) => {
-    console.log('🚫 [SOCKET] Usuario bloqueado:', data);
-    userBlockedCallbacks.current.forEach(cb => cb(data));
-          });
+            console.log('🚫 [SOCKET] Usuario bloqueado:', data);
+            userBlockedCallbacks.current.forEach(cb => cb(data));
+        });
 
         socketRef.current.on('friend-status-changed', (data) => {
-    console.log('📢 [SOCKET] Estado de amigo cambiado:', data);
-    friendStatusChangedCallbacks.current.forEach(cb => cb(data));
-            });
+            console.log('📢 [SOCKET] Estado de amigo cambiado:', data);
+            friendStatusChangedCallbacks.current.forEach(cb => cb(data));
+        });
 
         // ==========================================
-        //EVENTOS MENSAJE ELIMINADO
+        // EVENTOS MENSAJE ELIMINADO
         // ==========================================
         socketRef.current.on('message-deleted', (data) => {
             console.log('🗑️ [SOCKET] Mensaje eliminado:', data);
@@ -148,8 +158,7 @@ export const useSocket = (): UseSocketReturn => {
         });
 
         // ==========================================
-        //  EVENTO:
-        //  "ESCRIBIENDO..."
+        // EVENTO "ESCRIBIENDO..."
         // ==========================================
         socketRef.current.on('user-typing', (data) => {
             console.log('✍️ [SOCKET] Usuario escribiendo:', data);
@@ -157,11 +166,24 @@ export const useSocket = (): UseSocketReturn => {
         });
 
         // ==========================================
-        //  EVENTO DE NO LEÍDOS
+        // EVENTO DE NO LEÍDOS
         // ==========================================
         socketRef.current.on('unread-update', (data) => {
             console.log('📢 [SOCKET] Actualización de no leídos:', data);
             unreadUpdateCallbacks.current.forEach(cb => cb(data));
+        });
+
+        // ==========================================
+        // EVENTOS DE RESPUESTA DE NO LEÍDOS
+        // ==========================================
+        socketRef.current.on('unread-count-response', (data) => {
+            console.log('📊 [SOCKET] Respuesta de conteo de no leídos:', data);
+            unreadCountResponseCallbacks.current.forEach(cb => cb(data));
+        });
+
+        socketRef.current.on('total-unread-response', (data) => {
+            console.log('📊 [SOCKET] Respuesta de total de no leídos:', data);
+            totalUnreadResponseCallbacks.current.forEach(cb => cb(data));
         });
 
         // ==========================================
@@ -217,8 +239,17 @@ export const useSocket = (): UseSocketReturn => {
                     socketRef.current?.off('unread-update', cb);
                 });
                 unreadUpdateCallbacks.current.clear();
+
+                unreadCountResponseCallbacks.current.forEach(cb => {
+                    socketRef.current?.off('unread-count-response', cb);
+                });
+                unreadCountResponseCallbacks.current.clear();
+
+                totalUnreadResponseCallbacks.current.forEach(cb => {
+                    socketRef.current?.off('total-unread-response', cb);
+                });
+                totalUnreadResponseCallbacks.current.clear();
                 
-                // Remover eventos base
                 socketRef.current.off('connect');
                 socketRef.current.off('disconnect');
                 socketRef.current.off('connect_error');
@@ -291,49 +322,48 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
-    // funcion de bloqueo y desbloqueo
-const onUserBlocked = useCallback((callback: (data: any) => void) => {
-    if (!socketRef.current) return;
-    userBlockedCallbacks.current.add(callback);
-    socketRef.current.on('user-blocked', callback);
-    console.log('📝 Listener user-blocked registrado');
+    // Función de bloqueo y desbloqueo
+    const onUserBlocked = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        userBlockedCallbacks.current.add(callback);
+        socketRef.current.on('user-blocked', callback);
+        console.log('📝 Listener user-blocked registrado');
     }, []);
 
-const offUserBlocked = useCallback((callback?: (data: any) => void) => {
-    if (!socketRef.current) return;
-    if (callback) {
-        userBlockedCallbacks.current.delete(callback);
-        socketRef.current.off('user-blocked', callback);
-    } else {
-        userBlockedCallbacks.current.forEach(cb => {
-            socketRef.current?.off('user-blocked', cb);
-        });
-        userBlockedCallbacks.current.clear();
-    }
-}, []);
+    const offUserBlocked = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            userBlockedCallbacks.current.delete(callback);
+            socketRef.current.off('user-blocked', callback);
+        } else {
+            userBlockedCallbacks.current.forEach(cb => {
+                socketRef.current?.off('user-blocked', cb);
+            });
+            userBlockedCallbacks.current.clear();
+        }
+    }, []);
 
-const onFriendStatusChanged = useCallback((callback: (data: any) => void) => {
-    if (!socketRef.current) return;
-    friendStatusChangedCallbacks.current.add(callback);
-    socketRef.current.on('friend-status-changed', callback);
-    console.log('📝 Listener friend-status-changed registrado');
-}, []);
+    const onFriendStatusChanged = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        friendStatusChangedCallbacks.current.add(callback);
+        socketRef.current.on('friend-status-changed', callback);
+        console.log('📝 Listener friend-status-changed registrado');
+    }, []);
 
-const offFriendStatusChanged = useCallback((callback?: (data: any) => void) => {
-    if (!socketRef.current) return;
-    if (callback) {
-        friendStatusChangedCallbacks.current.delete(callback);
-        socketRef.current.off('friend-status-changed', callback);
-    } else {
-        friendStatusChangedCallbacks.current.forEach(cb => {
-            socketRef.current?.off('friend-status-changed', cb);
-        });
-        friendStatusChangedCallbacks.current.clear();
-    }
-}, []);
+    const offFriendStatusChanged = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            friendStatusChangedCallbacks.current.delete(callback);
+            socketRef.current.off('friend-status-changed', callback);
+        } else {
+            friendStatusChangedCallbacks.current.forEach(cb => {
+                socketRef.current?.off('friend-status-changed', cb);
+            });
+            friendStatusChangedCallbacks.current.clear();
+        }
+    }, []);
 
-   
-    //funcion de mensajes
+    // Función de mensajes
     const onMessageSent = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         messageSentCallbacks.current.add(callback);
@@ -433,7 +463,7 @@ const offFriendStatusChanged = useCallback((callback?: (data: any) => void) => {
     }, [isConnected]);
 
     // ============================================
-    //NUEVAS FUNCIONES
+    // NUEVAS FUNCIONES
     // ============================================
 
     // Mensaje eliminado
@@ -478,7 +508,7 @@ const offFriendStatusChanged = useCallback((callback?: (data: any) => void) => {
         }
     }, []);
 
-    //  Usuario escribiendo
+    // Usuario escribiendo
     const onUserTyping = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         userTypingCallbacks.current.add(callback);
@@ -499,7 +529,8 @@ const offFriendStatusChanged = useCallback((callback?: (data: any) => void) => {
         }
     }, []);
 
-         //  FUNCIONES DE NO LEÍDOS
+    // ============================================
+    // FUNCIONES DE NO LEÍDOS
     // ============================================
 
     const onUnreadUpdate = useCallback((callback: (data: any) => void) => {
@@ -522,6 +553,37 @@ const offFriendStatusChanged = useCallback((callback?: (data: any) => void) => {
         }
     }, []);
 
+    // Emitir set-user manualmente
+    const setUser = useCallback((userId: string) => {
+        if (socketRef.current && isConnected) {
+            console.log(`👤 Emitiendo set-user para usuario ${userId}`);
+            socketRef.current.emit('set-user', userId);
+        }
+    }, [isConnected]);
+
+    //  Marcar mensajes como leídos
+    const markAsRead = useCallback((chatId: string) => {
+        if (socketRef.current && isConnected) {
+            console.log(`👀 Emitiendo mark-as-read para chat ${chatId}`);
+            socketRef.current.emit('mark-as-read', { chatId });
+        }
+    }, [isConnected]);
+
+    //  Obtener conteo de no leídos de un chat
+    const getUnreadCount = useCallback((chatId: string) => {
+        if (socketRef.current && isConnected) {
+            console.log(`📊 Solicitando conteo de no leídos para chat ${chatId}`);
+            socketRef.current.emit('get-unread-count', { chatId });
+        }
+    }, [isConnected]);
+
+    //  Obtener total de no leídos
+    const getTotalUnread = useCallback(() => {
+        if (socketRef.current && isConnected) {
+            console.log('📊 Solicitando total de no leídos');
+            socketRef.current.emit('get-total-unread');
+        }
+    }, [isConnected]);
 
     return {
         socket: socketRef.current,
@@ -548,15 +610,18 @@ const offFriendStatusChanged = useCallback((callback?: (data: any) => void) => {
         offMessageEdited,
         onUserTyping,
         offUserTyping,
-        //funciones de no leidoss
+        // Funciones de no leídos
         onUnreadUpdate,
         offUnreadUpdate,
-        //fucion para bloqueo y desbloqueo
+        // funcion para no leidos
+        markAsRead,
+        getUnreadCount,
+        getTotalUnread,
+        setUser,
+        // Función para bloqueo y desbloqueo
         onUserBlocked,
         offUserBlocked,
         onFriendStatusChanged,
         offFriendStatusChanged
-
-
     };
 };

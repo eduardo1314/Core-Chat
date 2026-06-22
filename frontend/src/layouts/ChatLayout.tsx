@@ -207,7 +207,8 @@ const ChatLayout: React.FC = () => {
             <div className="flex h-[calc(100vh-73px)] bg-white dark:bg-slate-800/20 dark:backdrop-blur-sm rounded-t-2xl overflow-hidden">
                 <Sidebar 
                     onSelectChat={handleSelectChat} 
-                    selectedChatId={selectedChatId} 
+                    selectedChatId={selectedChatId}
+                     onClearUnread={handleClearUnread} 
                 />
                 <ChatArea 
                     chatId={selectedChatId} 
