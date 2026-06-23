@@ -36,17 +36,11 @@ export const sendMessage = async (req: any, res: Response) => {
                 userId: userId
             });
             
-            //  Emitir actualización de no leídos para cada participante
+            // Emitir actualización de no leídos para cada participante
             if (chat && chat.participants) {
                 for (const participant of chat.participants) {
-                    // Si el participante no es el remitente
                     if (participant.userId !== userId) {
-                        // Obtener el conteo actual de no leídos para este usuario
                         const unreadCount = await messageService.getUnreadCount(chatId, participant.userId);
-                        
-                        console.log(`📢 Emitiendo unread-update para usuario ${participant.userId}: ${unreadCount}`);
-                        
-                        // Emitir al usuario específico
                         io.to(`user_${participant.userId}`).emit('unread-update', {
                             chatId: chatId,
                             count: unreadCount
@@ -81,11 +75,9 @@ export const getMessages = async (req: any, res: Response) => {
             offset
         );
         
-        // Marcar mensajes como leídos cuando el usuario los ve
         if (result.messages && result.messages.length > 0) {
             await messageService.markAsRead(chatId, userId);
             
-            // Emitir evento de lectura
             const io = req.app.get('io');
             if (io) {
                 io.to(`user_${userId}`).emit('unread-update', {
@@ -149,7 +141,6 @@ export const editMessage = async (req: any, res: Response) => {
             content
         );
         
-        // Emitir por WebSocket
         const io = req.app.get('io');
         if (io) {
             io.to(message.chat_id).emit('message-edited', message);
@@ -171,11 +162,9 @@ export const deleteMessage = async (req: any, res: Response) => {
         const { messageId } = req.params;
         const isAdmin = req.body.isAdmin || false;
         
-        // Obtener el mensaje antes de eliminarlo
         const message = await messageService.getMessageById(messageId);
         await messageService.deleteMessage(messageId, userId, isAdmin);
         
-        //  Emitir por WebSocket
         const io = req.app.get('io');
         if (io) {
             io.to(message.chat_id).emit('message-deleted', {
@@ -193,7 +182,7 @@ export const deleteMessage = async (req: any, res: Response) => {
 };
 
 // ============================================
-// 6. MARCAR COMO LEÍDO 
+// 6. MARCAR COMO LEÍDO
 // ============================================
 export const markAsRead = async (req: any, res: Response) => {
     try {
@@ -202,16 +191,25 @@ export const markAsRead = async (req: any, res: Response) => {
         
         await messageService.markAsRead(chatId, userId, messageId);
         
-        //  Emitir por WebSocket
         const io = req.app.get('io');
         if (io) {
-            //  Notificar que los mensajes se leyeron
             io.to(chatId).emit('messages-read', {
                 chatId,
                 userId: userId
             });
             
-            //  🔥 Actualizar no leídos para el usuario
+            //  Obtener mensajes leídos para notificar a los emisores
+            const readMessages = await messageService.getReadMessages(chatId, userId);
+            
+            for (const msg of readMessages) {
+                io.to(`user_${msg.user_id}`).emit('message-status-updated', {
+                    messageId: msg.id,
+                    status: 'read',
+                    readBy: userId,
+                    chatId: chatId
+                });
+            }
+            
             io.to(`user_${userId}`).emit('unread-update', {
                 chatId,
                 count: 0
@@ -255,5 +253,52 @@ export const getTotalUnreadCount = async (req: any, res: Response) => {
     } catch (error: any) {
         console.error('Get total unread error:', error);
         res.status(400).json({ success: false, error: error.message });
+    }
+};
+
+// ============================================
+// 9. CONFIRMAR ENTREGA DE MENSAJE
+// ============================================
+export const confirmMessageDelivered = async (req: any, res: Response) => {
+    try {
+        const { messageId } = req.body;
+        
+        if (!messageId) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'ID de mensaje requerido' 
+            });
+        }
+
+        const message = await messageService.getMessageById(messageId);
+        if (!message) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Mensaje no encontrado' 
+            });
+        }
+
+        await messageService.updateMessageStatus(messageId, 'delivered');
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`user_${message.user_id}`).emit('message-status-updated', {
+                messageId: message.id,
+                status: 'delivered',
+                chatId: message.chat_id
+            });
+        }
+
+        res.json({ 
+            success: true, 
+            message: 'Entrega confirmada' 
+        });
+
+    } catch (error: any) {
+        console.error('Error al confirmar entrega:', error);
+        res.status(400).json({ 
+            success: false, 
+            error: error.message 
+        });
     }
 };

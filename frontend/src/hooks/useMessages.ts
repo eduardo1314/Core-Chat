@@ -35,6 +35,7 @@ interface UseMessagesReturn {
     clearMessages: () => void;
     isUserTyping: boolean;    
     emitTyping: (isTyping: boolean) => void; 
+    setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
 }
 
 export const useMessages = (chatId: string | null): UseMessagesReturn => {
@@ -47,8 +48,9 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
     const [page, setPage] = useState(1);
     const [isUserTyping, setIsUserTyping] = useState(false); 
     
+    
     const { user } = useAuth();
-    const { 
+    const {
         isConnected, 
         joinChat, 
         leaveChat, 
@@ -64,9 +66,9 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
         onMessageEdited,
         offMessageEdited,
         emitTyping: emitTypingSocket,
-            onUnreadUpdate,  
-    offUnreadUpdate   
-
+        onUnreadUpdate,  
+        offUnreadUpdate,
+        confirmMessageDelivered
     } = useSocket();
     
     const { updateChat } = useChats();
@@ -176,28 +178,28 @@ export const useMessages = (chatId: string | null): UseMessagesReturn => {
     }, [chatId, isConnected, joinChat, leaveChat, loadInitialMessages]);
 
     // ============================================
-//  ESCUCHAR ACTUALIZACIONES DE NO LEÍDOS
-// ============================================
-useEffect(() => {
-    if (!chatId || !isConnected) return;
+    // ESCUCHAR ACTUALIZACIONES DE NO LEÍDOS
+    // ============================================
+    useEffect(() => {
+        if (!chatId || !isConnected) return;
 
-    const handleUnreadUpdate = (data: { chatId: string; count: number }) => {
-        if (data.chatId !== chatId) return;
-        
-        if (data.count > 0 && chatId) {
-            markAsReadService(chatId);
-        }
-    };
+        const handleUnreadUpdate = (data: { chatId: string; count: number }) => {
+            if (data.chatId !== chatId) return;
+            
+            if (data.count > 0 && chatId) {
+                markAsReadService(chatId);
+            }
+        };
 
-    onUnreadUpdate(handleUnreadUpdate);
+        onUnreadUpdate(handleUnreadUpdate);
 
-    return () => {
-        offUnreadUpdate(handleUnreadUpdate);
-    };
-}, [chatId, isConnected, onUnreadUpdate, offUnreadUpdate]);
+        return () => {
+            offUnreadUpdate(handleUnreadUpdate);
+        };
+    }, [chatId, isConnected, onUnreadUpdate, offUnreadUpdate]);
 
     // ============================================
-    // 4. ESCUCHAR NUEVOS MENSAJES el que recibe
+    // 4. ESCUCHAR NUEVOS MENSAJES (CON CONFIRMACIÓN DE ENTREGA)
     // ============================================
     useEffect(() => {
         if (!chatId || !isConnected) return;
@@ -210,13 +212,18 @@ useEffect(() => {
                 return;
             }
 
-            //  Prevenir duplicados
+            // Prevenir duplicados
             if (messageIdsRef.current.has(message.id)) {
                 return;
             }
 
             messageIdsRef.current.add(message.id);
             setMessages(prev => [...prev, message]);
+            
+            // Si el mensaje NO es mío, confirmar entrega (palomitas)
+            if (message.user_id !== user?.id && confirmMessageDelivered) {
+                confirmMessageDelivered(message.id);
+            }
             
             // Actualizar el chat en la lista 
             if (chatId) {
@@ -233,7 +240,7 @@ useEffect(() => {
                 });
             }
             
-            //  Marcar como leído
+            // Marcar como leído
             if (chatId) {
                 markAsReadService(chatId, message.id);
             }
@@ -244,7 +251,7 @@ useEffect(() => {
         return () => {
             offNewMessage(handleNewMessage);
         };
-    }, [chatId, isConnected, onNewMessage, offNewMessage, updateChat]);
+    }, [chatId, isConnected, onNewMessage, offNewMessage, updateChat, user, confirmMessageDelivered]);
 
     // ============================================
     // 5. CONFIRMACIÓN DE MENSAJE ENVIADO 
@@ -255,15 +262,18 @@ useEffect(() => {
         const handleMessageSent = (message: Message) => {
             console.log('✅ Mensaje enviado confirmado por WebSocket:', message.id);
             
-            //  Actualizar mensaje temporal del emisor
+            // Actualizar mensaje temporal del emisor
             if (message.tempId && pendingMessagesRef.current.has(message.tempId)) {
                 setMessages(prev => {
                     const updated = prev.map(msg => {
                         if (msg.tempId === message.tempId) {
-                            return {
+                            // Usar as any para evitar error de tipo
+                            const updatedMsg = {
                                 ...message,
-                                pending: false
-                            };
+                                pending: false,
+                                status: 'sent'
+                            } as any;
+                            return updatedMsg as Message;
                         }
                         return msg;
                     });
@@ -415,7 +425,7 @@ useEffect(() => {
     }, [chatId]);
 
     // ============================================
-    // 12. ENVIAR MENSAJE (SOLO WEBSOCKET)
+    // 12. ENVIAR MENSAJE 
     // ============================================
     const sendMessageHandler = useCallback(async (content: string, replyTo?: string) => {
         if (!chatId || !content.trim() || sending || !user?.id) return;
@@ -434,16 +444,17 @@ useEffect(() => {
                 id: user.id,
                 username: user.username || 'Tú',
                 avatar_url: user.avatar_url || null
-            }
+            },
+            status: 'pending'
         };
 
-        //  Agregar mensaje temporal
+        // Agregar mensaje temporal
         setMessages(prev => [...prev, tempMessage]);
         pendingMessagesRef.current.set(tempId, tempMessage);
         setSending(true);
 
         try {
-            //  Enviar por WebSocket
+            // Enviar por WebSocket
             if (isConnected) {
                 sendMessageSocket(
                     chatId, 
@@ -459,10 +470,12 @@ useEffect(() => {
                     setMessages(prev => {
                         return prev.map(msg => {
                             if (msg.tempId === tempId && response.data) {
-                                return {
+                                const updatedMsg = {
                                     ...response.data,
-                                    pending: false
-                                } as Message;
+                                    pending: false,
+                                    status: 'sent'
+                                } as any;
+                                return updatedMsg as Message;
                             }
                             return msg;
                         });
@@ -512,8 +525,6 @@ useEffect(() => {
         pendingMessagesRef.current.clear();
     }, []);
 
-
-
     return {
         messages,
         loading,
@@ -521,6 +532,7 @@ useEffect(() => {
         sending,
         isConnected,
         hasMore,
+        setMessages,
         totalMessages,
         sendMessage: sendMessageHandler,
         editMessage: editMessageHandler,      

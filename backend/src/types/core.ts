@@ -61,7 +61,7 @@ export interface FriendResponse {
 }
 
 // ============================================
-// TIPOS DE MENSAJES (ACTUALIZADOS)
+// TIPOS DE MENSAJES
 // ============================================
 export interface SendMessageData {
     chatId: string;
@@ -82,6 +82,7 @@ export interface MessageResponse {
     is_deleted: boolean;
     is_read: boolean; // para saber si está leído
     reply_to: string | null;
+     status?: 'sent' | 'delivered' | 'read';
     metadata: any | null; 
     created_at: Date;
     updated_at: Date;
@@ -93,7 +94,7 @@ export interface MessageResponse {
 }
 
 // ============================================
-// TIPOS DE PARTICIPANTES (NUEVO)
+// TIPOS DE PARTICIPANTES 
 // ============================================
 export interface ParticipantResponse {
     id: string;

@@ -43,13 +43,16 @@ interface UseSocketReturn {
     onUnreadUpdate: (callback: (data: any) => void) => void;
     offUnreadUpdate: (callback?: (data: any) => void) => void;
 
-    //  MÉTODOS PARA NO LEÍDOS
+    // MÉTODOS PARA NO LEÍDOS
     markAsRead: (chatId: string) => void;
     getUnreadCount: (chatId: string) => void;
     getTotalUnread: () => void;
     
-    //MÉTODO PARA SET USER
+    // MÉTODO PARA SET USER
     setUser: (userId: string) => void;
+
+    // CONFIRMAR ENTREGA (PALOMITAS)
+    confirmMessageDelivered: (messageId: string) => void;
 }
 
 export const useSocket = (): UseSocketReturn => {
@@ -294,6 +297,16 @@ export const useSocket = (): UseSocketReturn => {
                 username,
                 tempId
             });
+        }
+    }, [isConnected]);
+
+    // ============================================
+    //  CONFIRMAR ENTREGA (PALOMITAS)
+    // ============================================
+    const confirmMessageDelivered = useCallback((messageId: string) => {
+        if (socketRef.current && isConnected) {
+            console.log(`📨 Confirmando entrega del mensaje ${messageId}`);
+            socketRef.current.emit('message-delivered', { messageId });
         }
     }, [isConnected]);
 
@@ -561,7 +574,7 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, [isConnected]);
 
-    //  Marcar mensajes como leídos
+    // Marcar mensajes como leídos
     const markAsRead = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
             console.log(`👀 Emitiendo mark-as-read para chat ${chatId}`);
@@ -569,7 +582,7 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, [isConnected]);
 
-    //  Obtener conteo de no leídos de un chat
+    // Obtener conteo de no leídos de un chat
     const getUnreadCount = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
             console.log(`📊 Solicitando conteo de no leídos para chat ${chatId}`);
@@ -577,7 +590,7 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, [isConnected]);
 
-    //  Obtener total de no leídos
+    // Obtener total de no leídos
     const getTotalUnread = useCallback(() => {
         if (socketRef.current && isConnected) {
             console.log('📊 Solicitando total de no leídos');
@@ -622,6 +635,8 @@ export const useSocket = (): UseSocketReturn => {
         onUserBlocked,
         offUserBlocked,
         onFriendStatusChanged,
-        offFriendStatusChanged
+        offFriendStatusChanged,
+        //  Confirmar entrega (palomitas)
+        confirmMessageDelivered
     };
 };

@@ -6,11 +6,16 @@ import { setupMessageHandlers } from './handlers/message.handlers';
 import { setupUserHandlers } from './handlers/user.handlers';
 import { setupChatHandlers } from './handlers/chat.handlers';
 
-// Exportar estados globales 
-export const connectedUsers = new Map<string, string>();
-export const userSockets = new Map<string, Set<string>>();
-export const processedMessages = new Map<string, number>();
+// ============================================
+// ESTADOS GLOBALES DEL SOCKET
+// ============================================
+export const connectedUsers = new Map<string, string>();          
+export const userSockets = new Map<string, Set<string>>();         
+export const processedMessages = new Map<string, number>();      
 
+// ============================================
+// INICIALIZAR SOCKET.IO
+// ============================================
 export const initSocket = (httpServer: HttpServer) => {
     const io = new Server(httpServer, {
         cors: {
@@ -21,14 +26,20 @@ export const initSocket = (httpServer: HttpServer) => {
         transports: ['websocket', 'polling']
     });
 
+    // ============================================
+    // MANEJAR NUEVAS CONEXIONES
+    // ============================================
     io.on('connection', (socket) => {
         logger.info(`🔌 Usuario conectado: ${socket.id}`);
 
-        // Pasar io y socket a los handlers
+        // Registrar todos los handlers
         setupUserHandlers(io, socket);
         setupChatHandlers(io, socket);
         setupMessageHandlers(io, socket);
 
+        // ============================================
+        // MANEJAR DESCONEXIONES
+        // ============================================
         socket.on('disconnect', () => {
             logger.info(`🔌 Usuario desconectado: ${socket.id}`);
         });

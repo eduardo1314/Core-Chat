@@ -1,4 +1,3 @@
-// src/routes/message.routes.ts
 import { Router } from 'express';
 import { 
     sendMessage, 
@@ -8,7 +7,8 @@ import {
     deleteMessage,
     markAsRead,
     getUnreadCount,
-    getTotalUnreadCount
+    getTotalUnreadCount,
+    confirmMessageDelivered
 } from '../controllers/message.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 
@@ -25,20 +25,19 @@ router.use(authenticate);
 router.post('/', sendMessage);
 
 // Obtener mensajes de un chat (con paginación)
-// GET /api/messages/:chatId?page=1&limit=30
 router.get('/:chatId', getMessages);
 
 //  Obtener últimos mensajes (carga inicial)
-// GET /api/messages/:chatId/latest?limit=20
 router.get('/:chatId/latest', getLatestMessages);
 
 // Obtener no leídos de un chat
-// GET /api/messages/:chatId/unread
 router.get('/:chatId/unread', getUnreadCount);
 
 //  Obtener total de no leídos (todos los chats)
-// GET /api/messages/unread/total
 router.get('/unread/total', getTotalUnreadCount);
+
+// src/routes/message.routes.ts
+router.post('/delivered', confirmMessageDelivered);
 
 //  Editar mensaje
 router.put('/:messageId', editMessage);

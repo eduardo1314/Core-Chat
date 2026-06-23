@@ -158,6 +158,7 @@ export interface Message {
     metadata: any | null;      
     created_at: string;
     updated_at: string;
+     status?: 'pending' | 'sent' | 'delivered' | 'read';
     sender?: {
         id: string;
         username: string;

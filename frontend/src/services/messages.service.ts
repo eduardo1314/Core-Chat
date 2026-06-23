@@ -133,3 +133,17 @@ export async function getTotalUnreadCountService(): Promise<ApiResponse<{ totalU
         throw error.response?.data || { success: false, error: 'Error de conexión' };
     }
 }
+
+// ============================================
+//  CONFIRMAR ENTREGA DE MENSAJE (PALOMITAS)
+// ============================================
+export async function confirmMessageDeliveredService(
+    messageId: string
+): Promise<ApiResponse<{ success: boolean }>> {
+    try {
+        const response = await api.post('/messages/delivered', { messageId });
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data || { success: false, error: 'Error de conexión' };
+    }
+}

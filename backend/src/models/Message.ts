@@ -1,7 +1,6 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import sequelize from '../database/config';
 
-
 interface MessageAttributes {
     id: string;
     chat_id: string;
@@ -10,14 +9,15 @@ interface MessageAttributes {
     type: 'text' | 'image' | 'file' | 'video' | 'audio';
     is_edited: boolean;
     is_deleted: boolean;
-    is_read: boolean;           //  para saber si está leído
+    is_read: boolean;
+    status: 'sent' | 'delivered' | 'read';  
     reply_to: string | null;
-    metadata: any | null;       //  para reacciones, archivos, etc.
+    metadata: any | null;
     created_at: Date;
     updated_at: Date;
 }
 
-interface MessageCreationAttributes extends Optional<MessageAttributes, 'id' | 'created_at' | 'updated_at' | 'is_read' | 'metadata'> {}
+interface MessageCreationAttributes extends Optional<MessageAttributes, 'id' | 'created_at' | 'updated_at' | 'is_read' | 'status' | 'metadata'> {}
 
 class Message extends Model<MessageAttributes, MessageCreationAttributes> implements MessageAttributes {
     public id!: string;
@@ -27,9 +27,10 @@ class Message extends Model<MessageAttributes, MessageCreationAttributes> implem
     public type!: 'text' | 'image' | 'file' | 'video' | 'audio';
     public is_edited!: boolean;
     public is_deleted!: boolean;
-    public is_read!: boolean;      
+    public is_read!: boolean;
+    public status!: 'sent' | 'delivered' | 'read';  
     public reply_to!: string | null;
-    public metadata!: any | null;  
+    public metadata!: any | null;
     public readonly created_at!: Date;
     public readonly updated_at!: Date;
 }
@@ -75,10 +76,14 @@ Message.init(
             type: DataTypes.BOOLEAN,
             defaultValue: false
         },
-        
         is_read: {
             type: DataTypes.BOOLEAN,
             defaultValue: false,
+            allowNull: false
+        },
+        status: {
+            type: DataTypes.ENUM('sent', 'delivered', 'read'),
+            defaultValue: 'sent',
             allowNull: false
         },
         reply_to: {
@@ -89,7 +94,6 @@ Message.init(
                 key: 'id'
             }
         },
-        
         metadata: {
             type: DataTypes.JSON,
             allowNull: true,

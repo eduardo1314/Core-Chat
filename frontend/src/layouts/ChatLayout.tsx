@@ -8,23 +8,44 @@ import ChatArea from '../components/chat/ChatArea';
 import SettingsMenu from '../components/common/SettingsMenu';
 import { markAsReadService } from '../services/messages.service'; 
 
+// ============================================
+// COMPONENTE PRINCIPAL: ChatLayout
+// ============================================
 const ChatLayout: React.FC = () => {
-    const { user, logout } = useAuth();
-    const { socket, emitUserOffline } = useSocket();
-    const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
-    const [selectedChatName, setSelectedChatName] = useState<string>('');
-    const [selectedChatStatus, setSelectedChatStatus] = useState<boolean>(false); 
-    const [selectedChatLastSeen, setSelectedChatLastSeen] = useState<string | null>(null); 
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-
-    // ACTIVAR DETECCIÓN DE CIERRE DE PESTAÑA
-    usePageVisibility();
-
-    // ACTIVAR RECONEXIÓN AUTOMÁTICA
-    useReconnection();
+    // ============================================
+    // HOOKS Y ESTADOS
+    // ============================================
+    const { user, logout } = useAuth();                                      // Autenticación del usuario
+    const { socket, emitUserOffline } = useSocket();                         // Socket y funciones
+    const [selectedChatId, setSelectedChatId] = useState<string | null>(null);           
+    const [selectedChatName, setSelectedChatName] = useState<string>('');                
+    const [selectedChatStatus, setSelectedChatStatus] = useState<boolean>(false);        // Estado en línea del chat
+    const [selectedChatLastSeen, setSelectedChatLastSeen] = useState<string | null>(null); // Última vez visto
+    const canvasRef = useRef<HTMLCanvasElement>(null);                                   // Referencia al canvas de partículas
 
     // ==========================================
-    // PARA MARCAR MENSAJES COMO LEÍDOS
+    // EFECTO: Escuchar actualizaciones de estado de mensajes (palomitas) - GLOBAL
+    // ==========================================
+   useEffect(() => {
+    if (!socket) return;
+
+    socket.on('message-status-updated', () => {
+        // El ChatWindow ya maneja la actualización de la UI
+    });
+
+    return () => {
+        socket.off('message-status-updated');
+    };
+}, [socket]);
+
+    // ==========================================
+    // HOOKS: Detección de cierre de pestaña y reconexión
+    // ==========================================
+    usePageVisibility();    // Detecta cuando el usuario cambia de pestaña
+    useReconnection();      // Maneja la reconexión automática del socket
+
+    // ==========================================
+    // FUNCIÓN: Marcar mensajes como leídos
     // ==========================================
     const handleClearUnread = useCallback(async (chatId: string) => {
         try {
@@ -38,7 +59,7 @@ const ChatLayout: React.FC = () => {
     }, []);
 
     // ==========================================
-    //  PARA SELECCIONAR CHAT
+    // FUNCIÓN: Seleccionar un chat
     // ==========================================
     const handleSelectChat = useCallback((chatId: string | null, chatName?: string, isOnline?: boolean, lastSeen?: string | null) => {
         console.log('📌 Chat seleccionado:', { chatId, chatName, isOnline, lastSeen });
@@ -47,14 +68,14 @@ const ChatLayout: React.FC = () => {
         setSelectedChatStatus(isOnline || false);
         setSelectedChatLastSeen(lastSeen || null);
 
-        // Cuando se selecciona un chat, marcar como leídos en el backend
+        // Marcar mensajes como leídos al seleccionar el chat
         if (chatId) {
             handleClearUnread(chatId);
         }
     }, [handleClearUnread]);
 
     // ==========================================
-    //  LOGOUT CON SOCKET
+    // FUNCIÓN: Cerrar sesión con desconexión del socket
     // ==========================================
     const handleLogout = async () => {
         try {
@@ -73,7 +94,9 @@ const ChatLayout: React.FC = () => {
         }
     };
 
-    // Animación de partículas
+    // ==========================================
+    // EFECTO: Animación de partículas en el header (modo oscuro)
+    // ==========================================
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
@@ -175,10 +198,15 @@ const ChatLayout: React.FC = () => {
         };
     }, []);
 
+    // ==========================================
+    // RENDER: Layout principal
+    // ==========================================
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-blue-900 dark:to-slate-900">
             
-            {/* Header */}
+            {/* ==========================================
+                HEADER: Barra superior con título y controles
+                ========================================== */}
             <div className="relative bg-white dark:bg-transparent border-b border-gray-200 dark:border-blue-500/30">
                 <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none dark:block hidden" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 pointer-events-none dark:block hidden"></div>
@@ -203,12 +231,14 @@ const ChatLayout: React.FC = () => {
                 </div>
             </div>
 
-            {/* Chat Layout - Sidebar + ChatArea */}
+            {/* ==========================================
+                CHAT LAYOUT: Sidebar + Área de chat
+                ========================================== */}
             <div className="flex h-[calc(100vh-73px)] bg-white dark:bg-slate-800/20 dark:backdrop-blur-sm rounded-t-2xl overflow-hidden">
                 <Sidebar 
                     onSelectChat={handleSelectChat} 
                     selectedChatId={selectedChatId}
-                     onClearUnread={handleClearUnread} 
+                    onClearUnread={handleClearUnread} 
                 />
                 <ChatArea 
                     chatId={selectedChatId} 
