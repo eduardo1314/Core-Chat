@@ -64,3 +64,35 @@ export async function updateMyProfileService(data: {
         throw error.response?.data || { success: false, error: 'Error al actualizar perfil' };
     }
 }
+
+// ============================================
+// 6. SUBIR AVATAR
+// ============================================
+export async function uploadAvatarService(file: File): Promise<ApiResponse<{ avatar_url: string }>> {
+    try {
+        const formData = new FormData();
+        formData.append('avatar', file); 
+
+        const response = await api.post('/users/avatar', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+        
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data || { success: false, error: 'Error al subir avatar' };
+    }
+}
+
+// ============================================
+// 7. ELIMINAR AVATAR
+// ============================================
+export async function removeAvatarService(): Promise<ApiResponse<{ message: string }>> {
+    try {
+        const response = await api.delete('/users/avatar');
+        return response.data;
+    } catch (error: any) {
+        throw error.response?.data || { success: false, error: 'Error al eliminar avatar' };
+    }
+}

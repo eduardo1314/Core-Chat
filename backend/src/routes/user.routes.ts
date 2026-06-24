@@ -5,8 +5,11 @@ import {
     getProfile,
     getUserStatus,
     updateUserStatus,
-    updateProfile
+    updateProfile,
+    uploadAvatar,     
+    removeAvatar       
 } from '../controllers/user.controller';
+import { uploadAvatar as uploadMiddleware } from '../middlewares/upload.middleware';
 
 const router = Router();
 
@@ -20,16 +23,24 @@ router.use(authenticate);
 // Buscar usuarios por email
 router.get('/search', searchUsers);
 
-//  Obtener mi perfil
+// Obtener mi perfil
 router.get('/me', getProfile);
 
-//  Obtener estado de un usuario (online/offline + last_seen)
+// Obtener estado de un usuario (online/offline + last_seen)
 router.get('/:userId/status', getUserStatus);
 
-//  Actualizar mi estado (online/offline/away)
+// Actualizar mi estado (online/offline/away)
 router.patch('/me/status', updateUserStatus);
 
-//  Actualizar mi perfil
+// Actualizar mi perfil
 router.patch('/me', updateProfile);
+
+
+
+// Subir avatar (con Multer)
+router.post('/avatar', uploadMiddleware, uploadAvatar);
+
+// Eliminar avatar
+router.delete('/avatar', removeAvatar);
 
 export default router;

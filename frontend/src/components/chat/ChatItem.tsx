@@ -10,7 +10,8 @@ interface ChatItemProps {
     unreadCount: number;
     selectedChatId: string | null;
     user: any;
-    onSelectChat: (chatId: string, displayName: string, isOnline: boolean, lastSeen: string | null) => void;
+    avatarUrl?: string | null;
+    onSelectChat: (chatId: string, displayName: string, chatAvatar?: string | null, isOnline?: boolean, lastSeen?: string | null) => void;
     onClearUnread: (chatId: string) => void;
     onMarkAsRead: (chatId: string) => void;
     onArchiveChat: (chatId: string) => void;
@@ -29,6 +30,7 @@ const ChatItem: React.FC<ChatItemProps> = ({
     unreadCount,
     selectedChatId,
     user,
+    avatarUrl,
     onSelectChat,
     onClearUnread,
     onMarkAsRead,
@@ -38,9 +40,9 @@ const ChatItem: React.FC<ChatItemProps> = ({
     showArchiveButton
 }) => {
     const [showMenu, setShowMenu] = useState(false);
+    const [imageError, setImageError] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
-    // Cerrar menú al hacer clic fuera
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -51,15 +53,50 @@ const ChatItem: React.FC<ChatItemProps> = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    useEffect(() => {
+        setImageError(false);
+    }, [avatar]);
+
     const handleSelect = () => {
         onClearUnread(chat.id);
         onMarkAsRead(chat.id);
-        onSelectChat(chat.id, displayName, isOnline, lastSeen);
+        onSelectChat(chat.id, displayName, avatarUrl || null, isOnline, lastSeen);
+    };
+
+    const renderAvatar = () => {
+        const isImageUrl = avatar?.startsWith('http') || avatar?.startsWith('https');
+
+        if (isImageUrl && !imageError) {
+            return (
+                <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 flex-shrink-0 shadow-md">
+                    <img
+                        src={avatar}
+                        alt={displayName}
+                        className="w-full h-full object-cover"
+                        onError={() => setImageError(true)}
+                        loading="lazy"
+                    />
+                </div>
+            );
+        }
+
+        if (avatar === '👤' || avatar === '💬' || avatar.length <= 2) {
+            return (
+                <div className={`w-12 h-12 bg-gradient-to-r ${avatarBg} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md flex-shrink-0`}>
+                    {avatar === '👤' || avatar === '💬' ? avatar : avatar}
+                </div>
+            );
+        }
+
+        return (
+            <div className={`w-12 h-12 bg-gradient-to-r ${avatarBg} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md flex-shrink-0`}>
+                {displayName?.charAt(0).toUpperCase() || '?'}
+            </div>
+        );
     };
 
     return (
         <div className="flex items-center justify-between group hover:bg-gray-50 dark:hover:bg-gray-800 transition relative">
-            {/* Chat */}
             <div
                 onClick={handleSelect}
                 className={`flex items-start gap-3 p-4 flex-1 cursor-pointer ${
@@ -67,9 +104,7 @@ const ChatItem: React.FC<ChatItemProps> = ({
                 }`}
             >
                 <div className="relative flex-shrink-0 mt-1">
-                    <div className={`w-12 h-12 bg-gradient-to-r ${avatarBg} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md`}>
-                        {avatar === '👤' || avatar === '💬' ? avatar : avatar}
-                    </div>
+                    {renderAvatar()}
                     {unreadCount > 0 && (
                         <span className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center px-1 animate-pulse">
                             {unreadCount > 9 ? '9+' : unreadCount}
@@ -96,7 +131,6 @@ const ChatItem: React.FC<ChatItemProps> = ({
                 </div>
             </div>
 
-            {/* Botón de 3 puntos */}
             <div className="relative flex-shrink-0 mr-3 self-start mt-5" ref={menuRef}>
                 <button
                     onClick={(e) => {
@@ -113,7 +147,6 @@ const ChatItem: React.FC<ChatItemProps> = ({
                     </svg>
                 </button>
 
-                {/* Menú desplegable */}
                 {showMenu && (
                     <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 overflow-hidden">
                         {showArchiveButton ? (

@@ -11,7 +11,7 @@ import { Message } from '../../types';
 interface ChatWindowProps {
     chatId: string | null;                    
     chatName?: string;                        
-    chatAvatar?: string;                     
+    chatAvatar?: string | null; 
     isOnline?: boolean;                       
     lastSeen?: string | null;                 
     onClose?: () => void;                     
@@ -32,20 +32,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     // ESTADOS LOCALES
     // ============================================
     const [input, setInput] = useState('');                      
-    const [replyTo, setReplyTo] = useState<any>(null);            // Mensaje al que se responde
+    const [replyTo, setReplyTo] = useState<any>(null);           
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null); 
-    const [editContent, setEditContent] = useState('');           // Contenido de la edición
-    const [showMenu, setShowMenu] = useState(false);              // Mostrar menú principal
-    const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null); // 
-    const menuRef = useRef<HTMLDivElement>(null);                 // Referencia al menú principal
-    const messagesEndRef = useRef<HTMLDivElement>(null);          // Referencia para scroll al final
-    const inputRef = useRef<HTMLTextAreaElement>(null);           // Referencia al input
+    const [editContent, setEditContent] = useState('');           
+    const [showMenu, setShowMenu] = useState(false);              
+    const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
+    const [avatarError, setAvatarError] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);                 
+    const messagesEndRef = useRef<HTMLDivElement>(null);          
+    const inputRef = useRef<HTMLTextAreaElement>(null);           
 
     // ============================================
     // HOOKS
     // ============================================
     const { user } = useAuth();                                   
-    const { socket } = useSocket();                               // Socket para eventos en tiempo real
+    const { socket } = useSocket();                               
     const { 
         messages,                                                
         sendMessage,                                              
@@ -60,6 +61,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         isUserTyping,                                          
         emitTyping                                               
     } = useMessages(chatId);                                      
+
+    // Resetear error de avatar cuando cambia la URL
+    useEffect(() => {
+        setAvatarError(false);
+    }, [chatAvatar]);
 
     // ============================================
     // EFECTO: Cerrar menú principal al hacer clic fuera
@@ -82,7 +88,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             const target = event.target as HTMLElement;
             const messageMenu = target.closest('.message-menu-container');
             if (messageMenu) {
-                return; // No cerrar si el clic fue dentro del menú
+                return;
             }
             setOpenMessageMenu(null);
         };
@@ -91,7 +97,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }, []);
 
     // ============================================
-    // EFECTO: Escuchar actualizaciones de estado de mensajes (palomitas)
+    // EFECTO: Escuchar actualizaciones de estado de mensajes
     // ============================================
     useEffect(() => {
         if (!socket) return;
@@ -102,7 +108,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             readBy?: string; 
             chatId?: string 
         }) => {
-            // Actualizar el estado del mensaje en la lista
             setMessages((prev: Message[]) => 
                 prev.map((msg: Message) => {
                     if (msg.id === data.messageId) {
@@ -152,6 +157,34 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }, [loading, messages, scrollToBottom]);
 
     // ============================================
+    // FUNCIÓN: Renderizar avatar del header
+    // ============================================
+    const renderHeaderAvatar = () => {
+        const isImageUrl = chatAvatar && (chatAvatar.startsWith('http') || chatAvatar.startsWith('https'));
+        
+        // Si es una URL válida y no hay error de carga
+        if (isImageUrl && !avatarError) {
+            return (
+                <img 
+                    src={chatAvatar} 
+                    alt={chatName}
+                    className="w-11 h-11 rounded-full object-cover ring-2 ring-blue-500/20"
+                    onError={() => setAvatarError(true)}
+                    loading="lazy"
+                    crossOrigin="anonymous"
+                />
+            );
+        }
+
+        // Fallback: mostrar inicial del nombre con gradiente
+        return (
+            <div className="w-11 h-11 bg-gradient-to-br from-blue-500 via-cyan-500 to-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-blue-500/25">
+                {chatName?.charAt(0).toUpperCase() || 'C'}
+            </div>
+        );
+    };
+
+    // ============================================
     // FUNCIÓN: Enviar mensaje
     // ============================================
     const handleSend = async () => {
@@ -174,7 +207,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
 
     // ============================================
-    // FUNCIÓN: Manejar cambio en el input (emite "escribiendo")
+    // FUNCIÓN: Manejar cambio en el input
     // ============================================
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setInput(e.target.value);
@@ -224,11 +257,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     // FUNCIÓN: Renderizar estado del mensaje (palomitas)
     // ============================================
     const renderMessageStatus = (message: any) => {
-        // Mensaje enviándose (spinner)
         if (message.pending) {
             return <span className="text-gray-400 text-xs animate-spin">⏳</span>;
         }
-        // Mensaje leído (2 palomas verdes)
         if (message.status === 'read' || message.is_read) {
             return (
                 <span className="text-emerald-500 text-xs font-semibold flex items-center gap-0.5">
@@ -237,7 +268,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 </span>
             );
         }
-        // Mensaje entregado (2 palomas grises)
         if (message.status === 'delivered') {
             return (
                 <span className="text-gray-400 text-xs flex items-center gap-0.5">
@@ -246,11 +276,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 </span>
             );
         }
-        // Mensaje enviado (1 paloma gris) - solo para mensajes del usuario
         if (message.status === 'sent' && message.user_id === user?.id) {
             return <span className="text-gray-400 text-xs">✓</span>;
         }
-        // Fallback: si tiene is_read pero no status
         if (message.is_read) {
             return (
                 <span className="text-emerald-500 text-xs font-semibold flex items-center gap-0.5">
@@ -336,19 +364,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 ============================================ */}
             <div className="px-6 py-4 bg-white dark:bg-gray-800/90 border-b border-gray-200 dark:border-gray-700/50 flex-shrink-0 backdrop-blur-sm">
                 <div className="flex items-center justify-between">
-                    {/* Información del usuario/chat */}
                     <div className="flex items-center gap-4">
-                        {chatAvatar ? (
-                            <img 
-                                src={chatAvatar} 
-                                alt={chatName}
-                                className="w-11 h-11 rounded-full object-cover ring-2 ring-blue-500/20"
-                            />
-                        ) : (
-                            <div className="w-11 h-11 bg-gradient-to-br from-blue-500 via-cyan-500 to-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-blue-500/25">
-                                {chatName?.charAt(0).toUpperCase() || 'C'}
-                            </div>
-                        )}
+                        {renderHeaderAvatar()}
                         <div>
                             <h3 className="font-semibold text-gray-800 dark:text-white text-lg leading-tight">
                                 {chatName}
@@ -368,7 +385,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                         </div>
                     </div>
 
-                    {/* Menú de opciones (3 puntos) */}
                     <div className="relative" ref={menuRef}>
                         <button
                             onClick={() => setShowMenu(!showMenu)}
@@ -437,7 +453,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 className="flex-1 overflow-y-auto px-4 py-4 space-y-2"
                 style={{ contain: 'strict' }}
             >
-                {/* Indicador de "escribiendo..." */}
                 {isUserTyping && (
                     <div className="flex justify-center py-2">
                         <div className="flex items-center gap-2 px-4 py-1.5 bg-gray-200/70 dark:bg-gray-700/50 rounded-full">
@@ -449,7 +464,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     </div>
                 )}
 
-                {/* Indicador de carga de más mensajes */}
                 {loadingMore && (
                     <div className="flex justify-center py-3">
                         <div className="text-xs text-gray-400 flex items-center gap-2">
@@ -459,7 +473,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     </div>
                 )}
 
-                {/* Estado de carga o mensajes */}
                 {loading ? (
                     <div className="flex justify-center py-12">
                         <div className="animate-spin rounded-full h-10 w-10 border-3 border-blue-500 border-t-transparent"></div>
@@ -473,17 +486,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                         </div>
                     </div>
                 ) : (
-                    // Mensajes agrupados por fecha
                     getGroupedMessages().map((group, groupIndex) => (
                         <div key={groupIndex}>
-                            {/* Separador de fecha */}
                             <div className="flex justify-center my-4">
                                 <span className="text-xs font-medium bg-gray-200/80 dark:bg-gray-700/80 px-4 py-1.5 rounded-full text-gray-500 dark:text-gray-400 shadow-sm backdrop-blur-sm">
                                     {formatDate(group.messages[0].created_at)}
                                 </span>
                             </div>
                             
-                            {/* Mensajes del grupo */}
                             {group.messages.map((msg) => {
                                 const isOwn = msg.user_id === user?.id;
                                 const isEditing = editingMessageId === msg.id;
@@ -500,21 +510,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                     : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-white shadow-md shadow-gray-200/50 dark:shadow-gray-700/20'
                                             } ${msg.pending ? 'opacity-70' : ''}`}
                                         >
-                                            {/* Nombre del remitente (solo para mensajes de otros) */}
                                             {!isOwn && msg.sender && (
                                                 <div className="text-xs font-semibold text-blue-500 dark:text-blue-400 mb-1">
                                                     {msg.sender.username}
                                                 </div>
                                             )}
                                             
-                                            {/* Mensaje al que se responde */}
                                             {msg.reply_to && (
                                                 <div className="text-xs text-gray-400 dark:text-gray-500 mb-1.5 border-l-2 border-blue-500/50 pl-2.5 italic">
                                                     ↪️ {msg.reply_to}
                                                 </div>
                                             )}
                                             
-                                            {/* Contenido del mensaje o editor */}
                                             {isEditing ? (
                                                 <div className="mt-1">
                                                     <input
@@ -549,7 +556,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                 </div>
                                             )}
                                             
-                                            {/* Footer: hora, estado y acciones */}
                                             <div className={`flex items-center justify-end gap-2 mt-1.5 text-xs ${
                                                 isOwn ? 'text-blue-200/80' : 'text-gray-400 dark:text-gray-500'
                                             }`}>
@@ -560,10 +566,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                     })}
                                                 </span>
                                                 
-                                                {/* Estado del mensaje (palomitas) */}
                                                 {isOwn && !isEditing && renderMessageStatus(msg)}
                                                 
-                                                {/* Menú de acciones del mensaje (3 puntos) */}
                                                 {!msg.is_deleted && !isEditing && (
                                                     <div className="relative message-menu-container">
                                                         <button
@@ -585,14 +589,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                             </svg>
                                                         </button>
                                                         
-                                                        {/* Menú desplegable del mensaje */}
                                                         {openMessageMenu === msg.id && (
                                                             <div className="absolute bottom-full right-0 mb-1.5 w-44 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700/50 py-1 z-50 overflow-hidden">
                                                                 <button
                                                                     onClick={() => handleReply(msg)}
                                                                     className="w-full text-left px-4 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 flex items-center gap-2.5 transition"
                                                                 >
-                                                                     Responder
+                                                                    Responder
                                                                 </button>
                                                                 {isOwn && (
                                                                     <button
@@ -607,7 +610,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                                         onClick={() => handleDeleteMessage(msg.id)}
                                                                         className="w-full text-left px-4 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2.5 transition border-t border-gray-100 dark:border-gray-700/50"
                                                                     >
-                                                                     Eliminar
+                                                                        Eliminar
                                                                     </button>
                                                                 )}
                                                             </div>
@@ -623,7 +626,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     ))
                 )}
                 
-                {/* Elemento para scroll al final */}
                 <div ref={messagesEndRef} />
             </div>
 

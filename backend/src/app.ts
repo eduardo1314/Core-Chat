@@ -7,6 +7,7 @@ import chatRoutes from './routes/chat.routes';
 import messageRoutes from './routes/message.routes';
 import friendRoutes from './routes/friend.routes';
 import userRoutes from './routes/user.routes';
+import cloudinaryRoutes from "./routes/cloudinary.routes";
 import cookieParser from 'cookie-parser';
 
 const app: Express = express();
@@ -63,6 +64,8 @@ app.use(`${config.apiPrefix}/chats`, chatRoutes);
 app.use(`${config.apiPrefix}/messages`, messageRoutes);
 app.use(`${config.apiPrefix}/friends`, friendRoutes);
 app.use(`${config.apiPrefix}/users`, userRoutes);
+app.use(`${config.apiPrefix}/cloudinary`, cloudinaryRoutes);
+
 
 // 404 handler
 app.use((req: Request, res: Response) => {

@@ -4,9 +4,9 @@ import { useSocket } from '../hooks/useSocket';
 import { usePageVisibility } from '../hooks/usePageVisibility';
 import { useReconnection } from '../hooks/useReconnection';
 import Sidebar from '../components/chat/Sidebar';
-import ChatArea from '../components/chat/ChatArea';
 import SettingsMenu from '../components/common/SettingsMenu';
 import { markAsReadService } from '../services/messages.service'; 
+import ChatWindow from '../components/chat/ChatArea';
 
 // ============================================
 // COMPONENTE PRINCIPAL: ChatLayout
@@ -15,34 +15,34 @@ const ChatLayout: React.FC = () => {
     // ============================================
     // HOOKS Y ESTADOS
     // ============================================
-    const { user, logout } = useAuth();                                      // Autenticación del usuario
-    const { socket, emitUserOffline } = useSocket();                         // Socket y funciones
-    const [selectedChatId, setSelectedChatId] = useState<string | null>(null);           
-    const [selectedChatName, setSelectedChatName] = useState<string>('');                
-    const [selectedChatStatus, setSelectedChatStatus] = useState<boolean>(false);        // Estado en línea del chat
-    const [selectedChatLastSeen, setSelectedChatLastSeen] = useState<string | null>(null); // Última vez visto
-    const canvasRef = useRef<HTMLCanvasElement>(null);                                   // Referencia al canvas de partículas
+    const { user, logout } = useAuth();
+    const { socket, emitUserOffline } = useSocket();
+    const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+    const [selectedChatName, setSelectedChatName] = useState<string>('');
+    const [selectedChatAvatar, setSelectedChatAvatar] = useState<string | null>(null);
+    const [selectedChatStatus, setSelectedChatStatus] = useState<boolean>(false);
+    const [selectedChatLastSeen, setSelectedChatLastSeen] = useState<string | null>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
 
     // ==========================================
-    // EFECTO: Escuchar actualizaciones de estado de mensajes (palomitas) - GLOBAL
+    // EFECTO: Escuchar actualizaciones de estado de mensajes
     // ==========================================
-   useEffect(() => {
-    if (!socket) return;
+    useEffect(() => {
+        if (!socket) return;
 
-    socket.on('message-status-updated', () => {
-        // El ChatWindow ya maneja la actualización de la UI
-    });
+        socket.on('message-status-updated', () => {
+        });
 
-    return () => {
-        socket.off('message-status-updated');
-    };
-}, [socket]);
+        return () => {
+            socket.off('message-status-updated');
+        };
+    }, [socket]);
 
     // ==========================================
     // HOOKS: Detección de cierre de pestaña y reconexión
     // ==========================================
-    usePageVisibility();    // Detecta cuando el usuario cambia de pestaña
-    useReconnection();      // Maneja la reconexión automática del socket
+    usePageVisibility();
+    useReconnection();
 
     // ==========================================
     // FUNCIÓN: Marcar mensajes como leídos
@@ -61,21 +61,32 @@ const ChatLayout: React.FC = () => {
     // ==========================================
     // FUNCIÓN: Seleccionar un chat
     // ==========================================
-    const handleSelectChat = useCallback((chatId: string | null, chatName?: string, isOnline?: boolean, lastSeen?: string | null) => {
-        console.log('📌 Chat seleccionado:', { chatId, chatName, isOnline, lastSeen });
+    const handleSelectChat = useCallback((
+        chatId: string | null, 
+        chatName?: string, 
+        chatAvatar?: string | null,
+        isOnline?: boolean, 
+        lastSeen?: string | null
+    ) => {
+        console.log('📌 [ChatLayout] handleSelectChat - chatAvatar recibido:', chatAvatar);
+        console.log('📌 [ChatLayout] handleSelectChat - chatName recibido:', chatName);
+        console.log('📌 [ChatLayout] handleSelectChat - chatId recibido:', chatId);
+        
         setSelectedChatId(chatId);
         setSelectedChatName(chatName || 'Chat');
+        setSelectedChatAvatar(chatAvatar || null);
         setSelectedChatStatus(isOnline || false);
         setSelectedChatLastSeen(lastSeen || null);
 
-        // Marcar mensajes como leídos al seleccionar el chat
+        console.log('📌 [ChatLayout] selectedChatAvatar guardado:', chatAvatar || null);
+
         if (chatId) {
             handleClearUnread(chatId);
         }
     }, [handleClearUnread]);
 
     // ==========================================
-    // FUNCIÓN: Cerrar sesión con desconexión del socket
+    // FUNCIÓN: Cerrar sesión
     // ==========================================
     const handleLogout = async () => {
         try {
@@ -95,7 +106,7 @@ const ChatLayout: React.FC = () => {
     };
 
     // ==========================================
-    // EFECTO: Animación de partículas en el header (modo oscuro)
+    // EFECTO: Animación de partículas
     // ==========================================
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -199,14 +210,14 @@ const ChatLayout: React.FC = () => {
     }, []);
 
     // ==========================================
-    // RENDER: Layout principal
+    // RENDER
     // ==========================================
+    console.log('📌 [ChatLayout] Render - selectedChatAvatar:', selectedChatAvatar);
+
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-blue-900 dark:to-slate-900">
             
-            {/* ==========================================
-                HEADER: Barra superior con título y controles
-                ========================================== */}
+            {/* HEADER */}
             <div className="relative bg-white dark:bg-transparent border-b border-gray-200 dark:border-blue-500/30">
                 <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none dark:block hidden" />
                 <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 pointer-events-none dark:block hidden"></div>
@@ -231,18 +242,17 @@ const ChatLayout: React.FC = () => {
                 </div>
             </div>
 
-            {/* ==========================================
-                CHAT LAYOUT: Sidebar + Área de chat
-                ========================================== */}
+            {/* CHAT LAYOUT */}
             <div className="flex h-[calc(100vh-73px)] bg-white dark:bg-slate-800/20 dark:backdrop-blur-sm rounded-t-2xl overflow-hidden">
                 <Sidebar 
                     onSelectChat={handleSelectChat} 
                     selectedChatId={selectedChatId}
                     onClearUnread={handleClearUnread} 
                 />
-                <ChatArea 
+                <ChatWindow 
                     chatId={selectedChatId} 
                     chatName={selectedChatName}
+                    chatAvatar={selectedChatAvatar ?? undefined}
                     isOnline={selectedChatStatus}
                     lastSeen={selectedChatLastSeen}
                 />

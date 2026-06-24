@@ -51,10 +51,12 @@ User.init(
             type: DataTypes.TEXT,
             allowNull: false
         },
+        
         avatar_url: {
-            type: DataTypes.TEXT,
-            allowNull: true
-        },
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    defaultValue: null
+    },
         status: {
             type: DataTypes.ENUM('online', 'offline', 'away'),
             defaultValue: 'offline'
