@@ -148,40 +148,39 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     // ============================================
     // FUNCIÓN COMÚN PARA ACTUALIZAR CHAT CON NUEVO MENSAJE
     // ============================================
-    const updateChatWithNewMessage = useCallback((data: any) => {
-        const chatId = data.chat_id || data.chatId;
-        if (!chatId) return;
+   const updateChatWithNewMessage = useCallback((data: any) => {
+    const chatId = data.chat_id || data.chatId;
+    if (!chatId) return;
 
-        setActiveChats(prev => {
-            const exists = prev.some(chat => chat.id === chatId);
-            
-            if (!exists) {
-                loadActiveChats();
-                return prev;
-            }
-            
-            return prev.map(chat => {
-                if (chat.id === chatId) {
-                    return {
-                        ...chat,
-                        lastMessage: {
-                            id: data.id,
-                            content: data.content,
-                            sender_id: data.user_id || data.sender?.id,
-                            status: data.status || 'sent',
-                            is_read: data.is_read || false,
-                            created_at: data.created_at || new Date().toISOString(),
-                            type: data.type || 'text',
-                            chat_id: chatId,
-                            sender: data.sender || { id: data.user_id, username: 'Usuario' }
-                        },
-                        updated_at: data.created_at || new Date().toISOString()
-                    };
-                }
-                return chat;
-            });
-        });
-    }, [loadActiveChats, setActiveChats]);
+    setActiveChats(prev => {
+        const chatIndex = prev.findIndex(chat => chat.id === chatId);
+        
+        if (chatIndex === -1) {
+            loadActiveChats();
+            return prev;
+        }
+        
+        const updatedChat = {
+            ...prev[chatIndex],
+            lastMessage: {
+                id: data.id,
+                content: data.content,
+                sender_id: data.user_id || data.sender?.id,
+                status: data.status || 'sent',
+                is_read: data.is_read || false,
+                created_at: data.created_at || new Date().toISOString(),
+                type: data.type || 'text',
+                chat_id: chatId,
+                sender: data.sender || { id: data.user_id, username: 'Usuario' }
+            },
+            updated_at: data.created_at || new Date().toISOString()
+        };
+        
+        // Mover al principio
+        const newList = prev.filter(chat => chat.id !== chatId);
+        return [updatedChat, ...newList];
+    });
+}, [loadActiveChats, setActiveChats]);
 
     // ============================================
     //  SINCRONIZAR LISTA DE CHATS EN TIEMPO REAL (useSocket)
@@ -189,37 +188,36 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     useEffect(() => {
         if (!isConnected) return;
 
-        const handleLastMessageUpdate = (data: { chatId: string; message: any }) => {
-            setActiveChats(prev => {
-                const chatExists = prev.some(chat => chat.id === data.chatId);
-                
-                if (!chatExists) {
-                    loadActiveChats();
-                    return prev;
-                }
-                
-                return prev.map(chat => {
-                    if (chat.id === data.chatId) {
-                        return {
-                            ...chat,
-                            lastMessage: {
-                                id: data.message.id,
-                                content: data.message.content,
-                                sender_id: data.message.sender?.id || data.message.user_id,
-                                status: data.message.status || 'sent',
-                                is_read: data.message.is_read || false,
-                                created_at: data.message.created_at || new Date().toISOString(),
-                                type: data.message.type || 'text',
-                                chat_id: data.chatId,
-                                sender: data.message.sender
-                            },
-                            updated_at: data.message.created_at || new Date().toISOString()
-                        };
-                    }
-                    return chat;
-                });
-            });
+      const handleLastMessageUpdate = (data: { chatId: string; message: any }) => {
+    setActiveChats(prev => {
+        const chatIndex = prev.findIndex(chat => chat.id === data.chatId);
+        
+        if (chatIndex === -1) {
+            loadActiveChats();
+            return prev;
+        }
+        
+        const updatedChat = {
+            ...prev[chatIndex],
+            lastMessage: {
+                id: data.message.id,
+                content: data.message.content,
+                sender_id: data.message.sender?.id || data.message.user_id,
+                status: data.message.status || 'sent',
+                is_read: data.message.is_read || false,
+                created_at: data.message.created_at || new Date().toISOString(),
+                type: data.message.type || 'text',
+                chat_id: data.chatId,
+                sender: data.message.sender
+            },
+            updated_at: data.message.created_at || new Date().toISOString()
         };
+        
+        // Mover al principio
+        const newList = prev.filter(chat => chat.id !== data.chatId);
+        return [updatedChat, ...newList];
+    });
+};
 
         const handleMessageStatusUpdate = (data: {
             messageId: string;

@@ -42,7 +42,7 @@ export const useChats = (): UseChatsReturn => {
     const isLoadingRef = useRef(false);
 
     // ============================================
-    //  CARGAR CHATS ACTIVOS
+    // CARGAR CHATS ACTIVOS
     // ============================================
     const loadActiveChats = useCallback(async () => {
         if (isLoadingRef.current) return;
@@ -54,7 +54,7 @@ export const useChats = (): UseChatsReturn => {
                 const backendChats = response.data || [];
                 
                 setActiveChats(prev => {
-                    return backendChats.map((backendChat: Chat) => {
+                    const merged = backendChats.map((backendChat: Chat) => {
                         const existingChat = prev.find(c => c.id === backendChat.id);
                         
                         if (existingChat?.lastMessage && existingChat.updated_at) {
@@ -71,6 +71,13 @@ export const useChats = (): UseChatsReturn => {
                         }
                         
                         return backendChat;
+                    });
+                    
+                    //  Ordenar por updated_at descendente (más reciente primero)
+                    return merged.sort((a, b) => {
+                        const timeA = new Date(a.updated_at || 0).getTime();
+                        const timeB = new Date(b.updated_at || 0).getTime();
+                        return timeB - timeA;
                     });
                 });
             }
@@ -147,28 +154,31 @@ export const useChats = (): UseChatsReturn => {
         type?: string;
         sender: { id: string; username: string; } 
     }) => {
-        setActiveChats(prev => 
-            prev.map(chat => {
-                if (chat.id === chatId) {
-                    return {
-                        ...chat,
-                        lastMessage: {
-                            id: messageData.id,
-                            content: messageData.content,
-                            created_at: messageData.created_at,
-                            status: messageData.status || 'sent',
-                            is_read: messageData.is_read || false,
-                            sender: messageData.sender,
-                            sender_id: messageData.sender.id,
-                            chat_id: chatId,
-                            type: messageData.type || 'text'
-                        },
-                        updated_at: messageData.created_at
-                    };
-                }
-                return chat;
-            })
-        );
+        setActiveChats(prev => {
+            const chatIndex = prev.findIndex(chat => chat.id === chatId);
+            
+            if (chatIndex === -1) return prev;
+            
+            const updatedChat = {
+                ...prev[chatIndex],
+                lastMessage: {
+                    id: messageData.id,
+                    content: messageData.content,
+                    created_at: messageData.created_at,
+                    status: messageData.status || 'sent',
+                    is_read: messageData.is_read || false,
+                    sender: messageData.sender,
+                    sender_id: messageData.sender.id,
+                    chat_id: chatId,
+                    type: messageData.type || 'text'
+                },
+                updated_at: messageData.created_at
+            };
+            
+            //  Mover al principio
+            const newList = prev.filter(chat => chat.id !== chatId);
+            return [updatedChat, ...newList];
+        });
         
         setArchivedChats(prev => 
             prev.map(chat => {
