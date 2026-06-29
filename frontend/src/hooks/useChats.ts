@@ -73,10 +73,14 @@ export const useChats = (): UseChatsReturn => {
                         return backendChat;
                     });
                     
-                    //  Ordenar por updated_at descendente (más reciente primero)
+                    // funcion de ordenamiento de chats
                     return merged.sort((a, b) => {
-                        const timeA = new Date(a.updated_at || 0).getTime();
-                        const timeB = new Date(b.updated_at || 0).getTime();
+                        const timeA = a.lastMessage?.created_at 
+                            ? new Date(a.lastMessage.created_at).getTime() 
+                            : new Date(a.updated_at || 0).getTime();
+                        const timeB = b.lastMessage?.created_at 
+                            ? new Date(b.lastMessage.created_at).getTime() 
+                            : new Date(b.updated_at || 0).getTime();
                         return timeB - timeA;
                     });
                 });
@@ -175,7 +179,6 @@ export const useChats = (): UseChatsReturn => {
                 updated_at: messageData.created_at
             };
             
-            //  Mover al principio
             const newList = prev.filter(chat => chat.id !== chatId);
             return [updatedChat, ...newList];
         });
