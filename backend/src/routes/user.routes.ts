@@ -13,7 +13,6 @@ import { uploadAvatar as uploadMiddleware } from '../middlewares/upload.middlewa
 
 const router = Router();
 
-// Todas las rutas requieren autenticación
 router.use(authenticate);
 
 // ============================================
@@ -26,10 +25,10 @@ router.get('/search', searchUsers);
 // Obtener mi perfil
 router.get('/me', getProfile);
 
-// Obtener estado de un usuario (online/offline + last_seen)
+// Obtener estado de un usuario 
 router.get('/:userId/status', getUserStatus);
 
-// Actualizar mi estado (online/offline/away)
+// Actualizar mi estado 
 router.patch('/me/status', updateUserStatus);
 
 // Actualizar mi perfil

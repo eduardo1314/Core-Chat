@@ -20,7 +20,7 @@ export const setupUserHandlers = (io: Server, socket: Socket) => {
         // Asignar userId al socket
         socket.data.userId = userId;
 
-        // Unir al usuario a su sala personal (necesario para palomitas)
+        // Unir al usuario a su sala personal 
         socket.join(`user_${userId}`);
 
         // Guardar en connectedUsers (socketId -> userId)
