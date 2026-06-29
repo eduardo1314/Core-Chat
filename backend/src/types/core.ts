@@ -18,8 +18,11 @@ export interface ChatResponse {
     updated_at: Date;
     Participants?: any[];
     lastMessage?: {
+        id?: string; 
         content: string;
         created_at: Date;
+        status?: 'pending' | 'sent' | 'delivered' | 'read';
+        is_read?: boolean; 
         sender: {
             id: string;
             username: string;

@@ -3,6 +3,8 @@ import { useMessages } from '../../hooks/useMessages';
 import { useAuth } from '../../hooks/useAuth';
 import { useSocket } from '../../hooks/useSocket';
 import { formatLastSeen } from '../../../utils/formatLastSeen';
+import { ChatBackgroundSelector } from './ChatBackgroundSelector';
+import { useChatBackground } from '../../hooks/useChatBackground';
 import { Message } from '../../types';
 
 // ============================================
@@ -38,9 +40,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const [showMenu, setShowMenu] = useState(false);              
     const [openMessageMenu, setOpenMessageMenu] = useState<string | null>(null);
     const [avatarError, setAvatarError] = useState(false);
+    const [showBackgroundSelector, setShowBackgroundSelector] = useState(false);
+    const [showProfile, setShowProfile] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);                 
     const messagesEndRef = useRef<HTMLDivElement>(null);          
     const inputRef = useRef<HTMLTextAreaElement>(null);           
+    const { getBackgroundStyles } = useChatBackground();
 
     // ============================================
     // HOOKS
@@ -62,13 +67,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         emitTyping                                               
     } = useMessages(chatId);                                      
 
-    // Resetear error de avatar cuando cambia la URL
     useEffect(() => {
         setAvatarError(false);
     }, [chatAvatar]);
 
     // ============================================
-    // EFECTO: Cerrar menú principal al hacer clic fuera
+    //  Cerrar menú principal al hacer clic fuera
     // ============================================
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -81,23 +85,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }, []);
 
     // ============================================
-    // EFECTO: Cerrar menú de mensaje al hacer clic fuera
+    // Cerrar menú de mensaje al hacer clic fuera
     // ============================================
     useEffect(() => {
+        if (!openMessageMenu) return;
+
         const handleClickOutside = (event: MouseEvent) => {
             const target = event.target as HTMLElement;
             const messageMenu = target.closest('.message-menu-container');
-            if (messageMenu) {
-                return;
+            if (!messageMenu) {
+                setOpenMessageMenu(null);
             }
-            setOpenMessageMenu(null);
         };
+
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    }, [openMessageMenu]);
 
     // ============================================
-    // EFECTO: Escuchar actualizaciones de estado de mensajes
+    //  Escuchar actualizaciones de estado de mensajes (PALOMITAS)
     // ============================================
     useEffect(() => {
         if (!socket) return;
@@ -108,12 +114,33 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             readBy?: string; 
             chatId?: string 
         }) => {
+            // Solo actualizar si el chatId coincide o no viene especificado
+            if (data.chatId && data.chatId !== chatId) return;
+
             setMessages((prev: Message[]) => 
                 prev.map((msg: Message) => {
                     if (msg.id === data.messageId) {
                         return { 
                             ...msg, 
-                            status: data.status as 'pending' | 'sent' | 'delivered' | 'read' 
+                            status: data.status as 'pending' | 'sent' | 'delivered' | 'read',
+                            is_read: data.status === 'read' ? true : msg.is_read
+                        } as Message;
+                    }
+                    return msg;
+                })
+            );
+        };
+
+        const handleMessagesRead = (data: { chatId: string; messageIds: string[]; readBy: string }) => {
+            if (data.chatId !== chatId) return;
+
+            setMessages((prev: Message[]) => 
+                prev.map((msg: Message) => {
+                    if (data.messageIds.includes(msg.id)) {
+                        return { 
+                            ...msg, 
+                            status: 'read' as const,
+                            is_read: true
                         } as Message;
                     }
                     return msg;
@@ -122,11 +149,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         };
 
         socket.on('message-status-updated', handleStatusUpdate);
+        socket.on('messages-read', handleMessagesRead);
 
         return () => {
             socket.off('message-status-updated', handleStatusUpdate);
+            socket.off('messages-read', handleMessagesRead);
         };
-    }, [socket, setMessages]);
+    }, [socket, chatId, setMessages]);
 
     // ============================================
     // FUNCIÓN: Scroll al final del chat
@@ -141,6 +170,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     useEffect(() => {
         if (messages.length > 0) {
             const lastMessage = messages[messages.length - 1];
+            // Hacer scroll si el mensaje es nuestro o está pendiente
             if (lastMessage?.pending || lastMessage?.user_id === user?.id) {
                 scrollToBottom();
             }
@@ -154,112 +184,112 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         if (!loading && messages.length > 0) {
             setTimeout(() => scrollToBottom('auto'), 100);
         }
-    }, [loading, messages, scrollToBottom]);
+    }, [loading, scrollToBottom]);
 
     // ============================================
     // FUNCIÓN: Renderizar avatar del header
     // ============================================
-    const renderHeaderAvatar = () => {
-        const isImageUrl = chatAvatar && (chatAvatar.startsWith('http') || chatAvatar.startsWith('https'));
+    const renderHeaderAvatar = useCallback(() => {
+        const isImageUrl = chatAvatar && (chatAvatar.startsWith('http://') || chatAvatar.startsWith('https://'));
         
-        // Si es una URL válida y no hay error de carga
         if (isImageUrl && !avatarError) {
             return (
                 <img 
-                    src={chatAvatar} 
+                    src={chatAvatar!} 
                     alt={chatName}
                     className="w-11 h-11 rounded-full object-cover ring-2 ring-blue-500/20"
                     onError={() => setAvatarError(true)}
                     loading="lazy"
-                    crossOrigin="anonymous"
                 />
             );
         }
 
-        // Fallback: mostrar inicial del nombre con gradiente
         return (
             <div className="w-11 h-11 bg-gradient-to-br from-blue-500 via-cyan-500 to-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-blue-500/25">
                 {chatName?.charAt(0).toUpperCase() || 'C'}
             </div>
         );
-    };
+    }, [chatAvatar, chatName, avatarError]);
 
     // ============================================
     // FUNCIÓN: Enviar mensaje
     // ============================================
-    const handleSend = async () => {
+    const handleSend = useCallback(async () => {
         if (input.trim() && !sending) {
             await sendMessage(input, replyTo?.id);
             setInput('');
             setReplyTo(null);
             emitTyping(false);
         }
-    };
+    }, [input, sending, sendMessage, replyTo, emitTyping]);
 
     // ============================================
     // FUNCIÓN: Manejar teclas en el input
     // ============================================
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
         }
-    };
+    }, [handleSend]);
 
     // ============================================
     // FUNCIÓN: Manejar cambio en el input
     // ============================================
-    const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setInput(e.target.value);
         emitTyping(e.target.value.length > 0);
-    };
+    }, [emitTyping]);
 
     // ============================================
     // FUNCIÓN: Eliminar mensaje
     // ============================================
-    const handleDeleteMessage = async (messageId: string) => {
+    const handleDeleteMessage = useCallback(async (messageId: string) => {
         if (window.confirm('¿Eliminar este mensaje?')) {
             await deleteMessage(messageId);
             setOpenMessageMenu(null);
         }
-    };
+    }, [deleteMessage]);
 
     // ============================================
     // FUNCIÓN: Iniciar edición de mensaje
     // ============================================
-    const handleStartEdit = (message: any) => {
+    const handleStartEdit = useCallback((message: Message) => {
         setEditingMessageId(message.id);
         setEditContent(message.content);
         setOpenMessageMenu(null);
-    };
+    }, []);
 
     // ============================================
     // FUNCIÓN: Guardar edición de mensaje
     // ============================================
-    const handleSaveEdit = async () => {
+    const handleSaveEdit = useCallback(async () => {
         if (editingMessageId && editContent.trim()) {
             await editMessage(editingMessageId, editContent);
             setEditingMessageId(null);
             setEditContent('');
         }
-    };
+    }, [editingMessageId, editContent, editMessage]);
 
     // ============================================
     // FUNCIÓN: Responder a un mensaje
     // ============================================
-    const handleReply = (message: any) => {
+    const handleReply = useCallback((message: Message) => {
         setReplyTo(message);
         inputRef.current?.focus();
         setOpenMessageMenu(null);
-    };
+    }, []);
 
     // ============================================
     // FUNCIÓN: Renderizar estado del mensaje (palomitas)
     // ============================================
-    const renderMessageStatus = (message: any) => {
-        if (message.pending) {
+    const renderMessageStatus = useCallback((message: Message) => {
+        // Mensaje pendiente de envío
+        if ((message as any).pending) {
             return <span className="text-gray-400 text-xs animate-spin">⏳</span>;
         }
+        
+        // Mensaje leído (doble check azul/verde)
         if (message.status === 'read' || message.is_read) {
             return (
                 <span className="text-emerald-500 text-xs font-semibold flex items-center gap-0.5">
@@ -268,6 +298,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 </span>
             );
         }
+        
+        // Mensaje entregado (doble check gris)
         if (message.status === 'delivered') {
             return (
                 <span className="text-gray-400 text-xs flex items-center gap-0.5">
@@ -276,24 +308,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 </span>
             );
         }
-        if (message.status === 'sent' && message.user_id === user?.id) {
+        
+        // Mensaje enviado (un check gris)
+        if (message.status === 'sent') {
             return <span className="text-gray-400 text-xs">✓</span>;
         }
-        if (message.is_read) {
-            return (
-                <span className="text-emerald-500 text-xs font-semibold flex items-center gap-0.5">
-                    <span>✓</span>
-                    <span>✓</span>
-                </span>
-            );
-        }
+        
         return null;
-    };
+    }, []);
 
     // ============================================
     // FUNCIÓN: Formatear fecha para el separador
     // ============================================
-    const formatDate = (date: string) => {
+    const formatDate = useCallback((date: string) => {
         const d = new Date(date);
         const today = new Date();
         const yesterday = new Date(today);
@@ -310,13 +337,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 year: 'numeric'
             });
         }
-    };
+    }, []);
 
     // ============================================
     // FUNCIÓN: Agrupar mensajes por fecha
     // ============================================
-    const getGroupedMessages = () => {
-        const groups: { date: string; messages: any[] }[] = [];
+    const getGroupedMessages = useCallback(() => {
+        const groups: { date: string; messages: Message[] }[] = [];
         let currentDate = '';
 
         messages.forEach((msg) => {
@@ -333,7 +360,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         });
 
         return groups;
-    };
+    }, [messages]);
 
     // ============================================
     // RENDER: Estado vacío (sin chat seleccionado)
@@ -358,11 +385,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     // RENDER: Componente principal
     // ============================================
     return (
-        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900">
-            {/* ============================================
-                HEADER: Información del chat y menú
-                ============================================ */}
-            <div className="px-6 py-4 bg-white dark:bg-gray-800/90 border-b border-gray-200 dark:border-gray-700/50 flex-shrink-0 backdrop-blur-sm">
+        <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900 relative">
+            {/* HEADER: Información del chat y menú */}
+            <div className="px-6 py-4 bg-white dark:bg-gray-800/90 border-b border-gray-200 dark:border-gray-700/50 flex-shrink-0 backdrop-blur-sm z-10">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         {renderHeaderAvatar()}
@@ -385,6 +410,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                         </div>
                     </div>
 
+                    {/* MENÚ DE TRES PUNTOS */}
                     <div className="relative" ref={menuRef}>
                         <button
                             onClick={() => setShowMenu(!showMenu)}
@@ -399,44 +425,37 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                         </button>
 
                         {showMenu && (
-                            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700/50 py-1.5 z-50 overflow-hidden">
+                            <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700/50 py-1.5 z-50 overflow-hidden">
                                 <button
                                     onClick={() => {
                                         setShowMenu(false);
-                                        onClose?.();
+                                        setShowProfile(true);
                                     }}
-                                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 flex items-center gap-3 transition"
-                                >
-                                    <span className="text-lg w-6 text-center">✕</span>
-                                    Cerrar chat
-                                </button>
-                                <div className="border-t border-gray-200 dark:border-gray-700/50 my-1"></div>
-                                <button
-                                    onClick={() => setShowMenu(false)}
                                     className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 flex items-center gap-3 transition"
                                 >
                                     <span className="text-lg w-6 text-center">👤</span>
                                     Ver perfil
                                 </button>
                                 <button
-                                    onClick={() => setShowMenu(false)}
+                                    onClick={() => {
+                                        setShowMenu(false);
+                                        setShowBackgroundSelector(!showBackgroundSelector);
+                                    }}
                                     className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 flex items-center gap-3 transition"
                                 >
-                                    <span className="text-lg w-6 text-center">📋</span>
-                                    Información
+                                    <span className="text-lg w-6 text-center">🎨</span>
+                                    Cambiar fondo
                                 </button>
                                 <div className="border-t border-gray-200 dark:border-gray-700/50 my-1"></div>
                                 <button
                                     onClick={() => {
                                         setShowMenu(false);
-                                        if (window.confirm(`¿Estás seguro de que quieres eliminar el chat con ${chatName}?`)) {
-                                            console.log('Eliminar chat:', chatId);
-                                        }
+                                        onClose?.();
                                     }}
                                     className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition"
                                 >
-                                    <span className="text-lg w-6 text-center">🗑️</span>
-                                    Eliminar chat
+                                    <span className="text-lg w-6 text-center">✕</span>
+                                    Cerrar chat
                                 </button>
                             </div>
                         )}
@@ -444,15 +463,82 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 </div>
             </div>
 
-            {/* ============================================
-                LISTA DE MENSAJES
-                ============================================ */}
+            {/* Selector de fondo */}
+            <ChatBackgroundSelector
+                chatId={chatId}
+                isOpen={showBackgroundSelector}
+                onClose={() => setShowBackgroundSelector(false)}
+            />
+
+            {/* MODAL DE PERFIL */}
+            {showProfile && (
+                <div className="absolute inset-0 z-50 bg-black/50 flex items-center justify-center">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xl font-bold text-gray-800 dark:text-white">Perfil</h3>
+                            <button
+                                onClick={() => setShowProfile(false)}
+                                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <div className="flex flex-col items-center">
+                            <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 mb-4">
+                                {chatAvatar && !avatarError ? (
+                                    <img 
+                                        src={chatAvatar} 
+                                        alt={chatName}
+                                        className="w-full h-full object-cover"
+                                        onError={() => setAvatarError(true)}
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-3xl text-gray-400">
+                                        {chatName?.charAt(0).toUpperCase()}
+                                    </div>
+                                )}
+                            </div>
+                            <h4 className="text-xl font-semibold text-gray-800 dark:text-white">{chatName}</h4>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                {isOnline ? '🟢 En línea' : `Última vez: ${formatLastSeen(lastSeen)}`}
+                            </p>
+                            <div className="w-full mt-6 space-y-3">
+                                <div className="flex justify-between py-2 border-b border-gray-200 dark:border-gray-700">
+                                    <span className="text-gray-500 dark:text-gray-400">Nombre</span>
+                                    <span className="text-gray-800 dark:text-white font-medium">{chatName}</span>
+                                </div>
+                                <div className="flex justify-between py-2 border-b border-gray-200 dark:border-gray-700">
+                                    <span className="text-gray-500 dark:text-gray-400">Estado</span>
+                                    <span className={`${isOnline ? 'text-green-500' : 'text-gray-400'}`}>
+                                        {isOnline ? 'En línea' : 'Offline'}
+                                    </span>
+                                </div>
+                                {lastSeen && !isOnline && (
+                                    <div className="flex justify-between py-2 border-b border-gray-200 dark:border-gray-700">
+                                        <span className="text-gray-500 dark:text-gray-400">Última conexión</span>
+                                        <span className="text-gray-800 dark:text-white">{formatLastSeen(lastSeen)}</span>
+                                    </div>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => setShowProfile(false)}
+                                className="mt-6 w-full py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* LISTA DE MENSAJES */}
             <div 
-                ref={scrollContainerRef}
+                ref={scrollContainerRef as React.RefObject<HTMLDivElement>}
                 onScroll={handleScroll}
                 className="flex-1 overflow-y-auto px-4 py-4 space-y-2"
-                style={{ contain: 'strict' }}
+                style={getBackgroundStyles()}
             >
+                {/* Indicador de "escribiendo..." */}
                 {isUserTyping && (
                     <div className="flex justify-center py-2">
                         <div className="flex items-center gap-2 px-4 py-1.5 bg-gray-200/70 dark:bg-gray-700/50 rounded-full">
@@ -464,6 +550,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     </div>
                 )}
 
+                {/* Cargando mensajes anteriores */}
                 {loadingMore && (
                     <div className="flex justify-center py-3">
                         <div className="text-xs text-gray-400 flex items-center gap-2">
@@ -473,6 +560,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     </div>
                 )}
 
+                {/* Estado de carga inicial */}
                 {loading ? (
                     <div className="flex justify-center py-12">
                         <div className="animate-spin rounded-full h-10 w-10 border-3 border-blue-500 border-t-transparent"></div>
@@ -486,14 +574,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                         </div>
                     </div>
                 ) : (
+                    /* Mensajes agrupados por fecha */
                     getGroupedMessages().map((group, groupIndex) => (
-                        <div key={groupIndex}>
+                        <div key={`group-${groupIndex}`}>
+                            {/* Separador de fecha */}
                             <div className="flex justify-center my-4">
                                 <span className="text-xs font-medium bg-gray-200/80 dark:bg-gray-700/80 px-4 py-1.5 rounded-full text-gray-500 dark:text-gray-400 shadow-sm backdrop-blur-sm">
                                     {formatDate(group.messages[0].created_at)}
                                 </span>
                             </div>
                             
+                            {/* Mensajes del grupo */}
                             {group.messages.map((msg) => {
                                 const isOwn = msg.user_id === user?.id;
                                 const isEditing = editingMessageId === msg.id;
@@ -504,32 +595,38 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                         className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-1.5`}
                                     >
                                         <div
-                                            className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
+                                            className={`max-w-[75%] rounded-2xl px-4 py-2.5 shadow-md ${
                                                 isOwn
-                                                    ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-md shadow-blue-500/20'
-                                                    : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-white shadow-md shadow-gray-200/50 dark:shadow-gray-700/20'
-                                            } ${msg.pending ? 'opacity-70' : ''}`}
+                                                    ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-blue-500/20'
+                                                    : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-white shadow-gray-200/50 dark:shadow-gray-700/20'
+                                            } ${(msg as any).pending ? 'opacity-70' : ''}`}
                                         >
+                                            {/* Nombre del remitente (si no es propio) */}
                                             {!isOwn && msg.sender && (
                                                 <div className="text-xs font-semibold text-blue-500 dark:text-blue-400 mb-1">
                                                     {msg.sender.username}
                                                 </div>
                                             )}
                                             
+                                            {/* Mensaje respondido */}
                                             {msg.reply_to && (
                                                 <div className="text-xs text-gray-400 dark:text-gray-500 mb-1.5 border-l-2 border-blue-500/50 pl-2.5 italic">
-                                                    ↪️ {msg.reply_to}
+                                                    ↪️ Respondiendo...
                                                 </div>
                                             )}
                                             
+                                            {/* Modo edición */}
                                             {isEditing ? (
                                                 <div className="mt-1">
                                                     <input
                                                         type="text"
                                                         value={editContent}
                                                         onChange={(e) => setEditContent(e.target.value)}
-                                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit()}
-                                                        className="w-full px-3 py-1.5 text-sm border rounded-xl dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') handleSaveEdit();
+                                                            if (e.key === 'Escape') setEditingMessageId(null);
+                                                        }}
+                                                        className="w-full px-3 py-1.5 text-sm border rounded-xl dark:bg-gray-700 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 outline-none text-gray-800 dark:text-white"
                                                         autoFocus
                                                     />
                                                     <div className="flex gap-2 mt-1.5">
@@ -548,14 +645,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                     </div>
                                                 </div>
                                             ) : (
+                                                /* Contenido del mensaje */
                                                 <div className="break-words text-sm leading-relaxed">
                                                     {msg.content}
                                                     {msg.is_edited && (
-                                                        <span className="text-xs text-gray-400 dark:text-gray-500 ml-1.5">(editado)</span>
+                                                        <span className="text-xs opacity-70 ml-1.5">(editado)</span>
                                                     )}
                                                 </div>
                                             )}
                                             
+                                            {/* Footer: hora + palomitas + menú */}
                                             <div className={`flex items-center justify-end gap-2 mt-1.5 text-xs ${
                                                 isOwn ? 'text-blue-200/80' : 'text-gray-400 dark:text-gray-500'
                                             }`}>
@@ -566,9 +665,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                     })}
                                                 </span>
                                                 
+                                                {/* Palomitas (solo en mensajes propios) */}
                                                 {isOwn && !isEditing && renderMessageStatus(msg)}
                                                 
-                                                {!msg.is_deleted && !isEditing && (
+                                                {/* Menú de mensaje (tres puntos) */}
+                                                {!isEditing && (
                                                     <div className="relative message-menu-container">
                                                         <button
                                                             onClick={(e) => {
@@ -595,14 +696,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                                     onClick={() => handleReply(msg)}
                                                                     className="w-full text-left px-4 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 flex items-center gap-2.5 transition"
                                                                 >
-                                                                    Responder
+                                                                    ↩️ Responder
                                                                 </button>
                                                                 {isOwn && (
                                                                     <button
                                                                         onClick={() => handleStartEdit(msg)}
                                                                         className="w-full text-left px-4 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50 flex items-center gap-2.5 transition border-t border-gray-100 dark:border-gray-700/50"
                                                                     >
-                                                                        Editar
+                                                                        ✏️ Editar
                                                                     </button>
                                                                 )}
                                                                 {isOwn && (
@@ -610,7 +711,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                                                         onClick={() => handleDeleteMessage(msg.id)}
                                                                         className="w-full text-left px-4 py-2 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2.5 transition border-t border-gray-100 dark:border-gray-700/50"
                                                                     >
-                                                                        Eliminar
+                                                                        🗑️ Eliminar
                                                                     </button>
                                                                 )}
                                                             </div>
@@ -626,14 +727,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     ))
                 )}
                 
+                {/* Referencia para scroll al final */}
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* ============================================
-                INDICADOR DE RESPUESTA (REPLY)
-                ============================================ */}
+            {/* INDICADOR DE RESPUESTA  */}
             {replyTo && (
-                <div className="px-4 pt-3 bg-white dark:bg-gray-800/90 border-t border-gray-200 dark:border-gray-700/50 backdrop-blur-sm">
+                <div className="px-4 pt-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700/50">
                     <div className="bg-blue-50 dark:bg-blue-900/20 p-2.5 rounded-t-xl border-l-4 border-blue-500">
                         <div className="flex justify-between items-center">
                             <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
@@ -655,10 +755,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 </div>
             )}
 
-            {/* ============================================
-                INPUT DE MENSAJE
-                ============================================ */}
-            <div className="p-4 bg-white dark:bg-gray-800/90 border-t border-gray-200 dark:border-gray-700/50 flex-shrink-0 backdrop-blur-sm">
+            {/* INPUT DE MENSAJE */}
+            <div className="p-4 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700/50 flex-shrink-0">
                 <div className="flex gap-2">
                     <textarea
                         ref={inputRef}
@@ -677,7 +775,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     >
                         {sending ? (
                             <>
-                                <span className="animate-spin"></span>
+                                <span className="animate-spin">⏳</span>
                                 <span>Enviando...</span>
                             </>
                         ) : (

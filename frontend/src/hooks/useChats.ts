@@ -22,6 +22,15 @@ interface UseChatsReturn {
     addChat: (chat: Chat) => void;
     updateChat: (chatId: string, updates: Partial<Chat>) => void;
     removeChat: (chatId: string) => void;
+    updateLastMessage: (chatId: string, messageData: { 
+        id: string; 
+        content: string; 
+        created_at: string; 
+        status?: 'pending' | 'sent' | 'delivered' | 'read';
+        is_read?: boolean;
+        type?: string;  
+        sender: { id: string; username: string; } 
+    }) => void;
 }
 
 export const useChats = (): UseChatsReturn => {
@@ -32,17 +41,38 @@ export const useChats = (): UseChatsReturn => {
     
     const isLoadingRef = useRef(false);
 
+    // ============================================
+    //  CARGAR CHATS ACTIVOS
+    // ============================================
     const loadActiveChats = useCallback(async () => {
-        if (isLoadingRef.current) {
-            console.log('⏳ Ya cargando chats activos, omitiendo...');
-            return;
-        }
+        if (isLoadingRef.current) return;
         
         isLoadingRef.current = true;
         try {
             const response = await getActiveChatsService();
             if (response.success) {
-                setActiveChats(response.data || []);
+                const backendChats = response.data || [];
+                
+                setActiveChats(prev => {
+                    return backendChats.map((backendChat: Chat) => {
+                        const existingChat = prev.find(c => c.id === backendChat.id);
+                        
+                        if (existingChat?.lastMessage && existingChat.updated_at) {
+                            const existingTime = new Date(existingChat.updated_at).getTime();
+                            const backendTime = new Date(backendChat.updated_at || 0).getTime();
+                            
+                            if (existingTime >= backendTime) {
+                                return {
+                                    ...backendChat,
+                                    lastMessage: existingChat.lastMessage,
+                                    updated_at: existingChat.updated_at
+                                };
+                            }
+                        }
+                        
+                        return backendChat;
+                    });
+                });
             }
         } catch (err: any) {
             setError(err.error || 'Error al cargar chats');
@@ -51,11 +81,11 @@ export const useChats = (): UseChatsReturn => {
         }
     }, []);
 
+    // ============================================
+    // CARGAR CHATS ARCHIVADOS
+    // ============================================
     const loadArchivedChats = useCallback(async () => {
-        if (isLoadingRef.current) {
-            console.log('⏳ Ya cargando chats archivados, omitiendo...');
-            return;
-        }
+        if (isLoadingRef.current) return;
         
         isLoadingRef.current = true;
         try {
@@ -70,16 +100,19 @@ export const useChats = (): UseChatsReturn => {
         }
     }, []);
 
+    // ============================================
+    // AGREGAR CHAT
+    // ============================================
     const addChat = useCallback((chat: Chat) => {
         setActiveChats(prev => {
-            if (prev.some(c => c.id === chat.id)) {
-                console.log('⚠️ Chat ya existe en activos:', chat.id);
-                return prev;
-            }
+            if (prev.some(c => c.id === chat.id)) return prev;
             return [chat, ...prev];
         });
     }, []);
 
+    // ============================================
+    // ACTUALIZAR CHAT
+    // ============================================
     const updateChat = useCallback((chatId: string, updates: Partial<Chat>) => {
         setActiveChats(prev => 
             prev.map(chat => 
@@ -94,11 +127,76 @@ export const useChats = (): UseChatsReturn => {
         );
     }, []);
 
+    // ============================================
+    // ELIMINAR CHAT
+    // ============================================
     const removeChat = useCallback((chatId: string) => {
         setActiveChats(prev => prev.filter(chat => chat.id !== chatId));
         setArchivedChats(prev => prev.filter(chat => chat.id !== chatId));
     }, []);
 
+    // ============================================
+    // ACTUALIZAR ÚLTIMO MENSAJE
+    // ============================================
+    const updateLastMessage = useCallback((chatId: string, messageData: { 
+        id: string; 
+        content: string; 
+        created_at: string; 
+        status?: 'pending' | 'sent' | 'delivered' | 'read';
+        is_read?: boolean;
+        type?: string;
+        sender: { id: string; username: string; } 
+    }) => {
+        setActiveChats(prev => 
+            prev.map(chat => {
+                if (chat.id === chatId) {
+                    return {
+                        ...chat,
+                        lastMessage: {
+                            id: messageData.id,
+                            content: messageData.content,
+                            created_at: messageData.created_at,
+                            status: messageData.status || 'sent',
+                            is_read: messageData.is_read || false,
+                            sender: messageData.sender,
+                            sender_id: messageData.sender.id,
+                            chat_id: chatId,
+                            type: messageData.type || 'text'
+                        },
+                        updated_at: messageData.created_at
+                    };
+                }
+                return chat;
+            })
+        );
+        
+        setArchivedChats(prev => 
+            prev.map(chat => {
+                if (chat.id === chatId) {
+                    return {
+                        ...chat,
+                        lastMessage: {
+                            id: messageData.id,
+                            content: messageData.content,
+                            created_at: messageData.created_at,
+                            status: messageData.status || 'sent',
+                            is_read: messageData.is_read || false,
+                            sender: messageData.sender,
+                            sender_id: messageData.sender.id,
+                            chat_id: chatId,
+                            type: messageData.type || 'text'
+                        },
+                        updated_at: messageData.created_at
+                    };
+                }
+                return chat;
+            })
+        );
+    }, []);
+
+    // ============================================
+    // ARCHIVAR CHAT
+    // ============================================
     const archiveChat = useCallback(async (chatId: string) => {
         try {
             const chatToArchive = activeChats.find(c => c.id === chatId);
@@ -108,18 +206,14 @@ export const useChats = (): UseChatsReturn => {
             }
 
             await archiveChatService(chatId);
-            
-            setTimeout(() => {
-                loadActiveChats();
-                loadArchivedChats();
-            }, 100);
         } catch (err: any) {
-            await loadActiveChats();
-            await loadArchivedChats();
             setError(err.error || 'Error al archivar chat');
         }
-    }, [activeChats, loadActiveChats, loadArchivedChats]);
+    }, [activeChats]);
 
+    // ============================================
+    // DESARCHIVAR CHAT
+    // ============================================
     const unarchiveChat = useCallback(async (chatId: string) => {
         try {
             const chatToUnarchive = archivedChats.find(c => c.id === chatId);
@@ -129,25 +223,19 @@ export const useChats = (): UseChatsReturn => {
             }
 
             await unarchiveChatService(chatId);
-            
-            setTimeout(() => {
-                loadActiveChats();
-                loadArchivedChats();
-            }, 100);
         } catch (err: any) {
-            await loadActiveChats();
-            await loadArchivedChats();
             setError(err.error || 'Error al desarchivar chat');
         }
-    }, [archivedChats, loadActiveChats, loadArchivedChats]);
+    }, [archivedChats]);
 
-    //  createChat con nombre del otro usuario para chats privados
+    // ============================================
+    // CREAR CHAT
+    // ============================================
     const createChat = useCallback(async (participantIds: string[], type = 'private', name?: string): Promise<Chat | null> => {
         try {
-            //  Si es privado y no se proporcionó nombre, el nombre será el del otro usuario
             let chatName = name;
             if (type === 'private' && !chatName && participantIds.length === 1) {
-                chatName = null as any; // Dejar que el backend maneje el nombre
+                chatName = null as any;
             }
             
             const response = await createChatService({ type, name: chatName || undefined, participantIds });
@@ -162,6 +250,9 @@ export const useChats = (): UseChatsReturn => {
         }
     }, []);
 
+    // ============================================
+    // CARGA INICIAL
+    // ============================================
     useEffect(() => {
         let mounted = true;
         
@@ -192,6 +283,7 @@ export const useChats = (): UseChatsReturn => {
         setActiveChats,
         addChat,    
         updateChat, 
-        removeChat  
+        removeChat,
+        updateLastMessage
     };
 };

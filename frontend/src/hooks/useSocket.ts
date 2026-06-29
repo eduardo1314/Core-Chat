@@ -13,6 +13,12 @@ interface UseSocketReturn {
     emitTyping: (chatId: string, isTyping: boolean) => void;
     onMessageSent: (callback: (data: any) => void) => void;
     offMessageSent: (callback?: (data: any) => void) => void;
+
+    // EVENTOS DE ACTUALIZACIÓN DE CHATS EN TIEMPO REAL
+    onLastMessageUpdate: (callback: (data: any) => void) => void;
+    offLastMessageUpdate: (callback?: (data: any) => void) => void;
+    onMessageStatusUpdate: (callback: (data: any) => void) => void;
+    offMessageStatusUpdate: (callback?: (data: any) => void) => void;
     
     // EVENTOS ONLINE/OFFLINE
     onUserOnline: (callback: (data: any) => void) => void;
@@ -57,12 +63,17 @@ interface UseSocketReturn {
 
 export const useSocket = (): UseSocketReturn => {
     const [isConnected, setIsConnected] = useState(false);
+    const [socket, setSocket] = useState<Socket | null>(null);  
     const socketRef = useRef<Socket | null>(null);
     const { user } = useAuth();
     
     // Callbacks existentes
     const newMessageCallbacks = useRef<Set<(data: any) => void>>(new Set());
     const messageSentCallbacks = useRef<Set<(data: any) => void>>(new Set());
+    
+    // EVENTOS DE ACTUALIZACIÓN DE CHATS EN TIEMPO REAL
+    const lastMessageUpdateCallbacks = useRef<Set<(data: any) => void>>(new Set());
+    const messageStatusUpdateCallbacks = useRef<Set<(data: any) => void>>(new Set());
 
     // Función para bloquear y desbloquear
     const userBlockedCallbacks = useRef<Set<(data: any) => void>>(new Set());
@@ -80,15 +91,13 @@ export const useSocket = (): UseSocketReturn => {
 
     // Callbacks de no leídos
     const unreadUpdateCallbacks = useRef<Set<(data: any) => void>>(new Set());
-    // callbacks para respuestas de no leídos
     const unreadCountResponseCallbacks = useRef<Set<(data: any) => void>>(new Set());
     const totalUnreadResponseCallbacks = useRef<Set<(data: any) => void>>(new Set());
 
     useEffect(() => {
         const socketUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
         
-        console.log('🔄 Inicializando socket...');
-        socketRef.current = io(socketUrl, {
+        const newSocket = io(socketUrl, {
             withCredentials: true,
             transports: ['websocket'],
             reconnection: true,
@@ -96,200 +105,148 @@ export const useSocket = (): UseSocketReturn => {
             reconnectionDelay: 1000,
         });
 
-        socketRef.current.on('connect', () => {
-            console.log('✅ Conectado al servidor WebSocket');
+        socketRef.current = newSocket;
+        setSocket(newSocket);
+
+        newSocket.on('connect', () => {
             setIsConnected(true);
-            
             if (user?.id) {
-                socketRef.current?.emit('set-user', user.id);
+                newSocket.emit('set-user', user.id);
             }
         });
 
-        socketRef.current.on('disconnect', () => {
-            console.log('❌ Desconectado del servidor WebSocket');
+        newSocket.on('disconnect', () => {
             setIsConnected(false);
         });
 
-        socketRef.current.on('connect_error', (error) => {
-            console.error('❌ Error de conexión Socket:', error);
+        newSocket.on('connect_error', (error) => {
+            console.error('Error de conexión Socket:', error);
             setIsConnected(false);
+        });
+
+        // ==========================================
+        // EVENTOS DE ACTUALIZACIÓN DE CHATS EN TIEMPO REAL
+        // ==========================================
+        newSocket.on('last-message-updated', (data) => {
+            lastMessageUpdateCallbacks.current.forEach(cb => cb(data));
+        });
+
+        newSocket.on('message-status-updated', (data) => {
+            messageStatusUpdateCallbacks.current.forEach(cb => cb(data));
         });
 
         // ==========================================
         // EVENTOS DE ONLINE/OFFLINE
         // ==========================================
-        socketRef.current.on('user-online', (data) => {
-            console.log(`🟢 Usuario ${data.userId} está en línea`);
+        newSocket.on('user-online', (data) => {
             userOnlineCallbacks.current.forEach(cb => cb(data));
         });
 
-        socketRef.current.on('user-offline', (data) => {
-            console.log(`🔴 Usuario ${data.userId} está offline`);
+        newSocket.on('user-offline', (data) => {
             userOfflineCallbacks.current.forEach(cb => cb(data));
         });
 
-        socketRef.current.on('user-status-updated', (data) => {
-            console.log(`📌 Estado de usuario actualizado:`, data);
+        newSocket.on('user-status-updated', (data) => {
             userStatusUpdatedCallbacks.current.forEach(cb => cb(data));
         });
 
         // EVENTOS DE BLOQUEO Y DESBLOQUEO
-        socketRef.current.on('user-blocked', (data) => {
-            console.log('🚫 [SOCKET] Usuario bloqueado:', data);
+        newSocket.on('user-blocked', (data) => {
             userBlockedCallbacks.current.forEach(cb => cb(data));
         });
 
-        socketRef.current.on('friend-status-changed', (data) => {
-            console.log('📢 [SOCKET] Estado de amigo cambiado:', data);
+        newSocket.on('friend-status-changed', (data) => {
             friendStatusChangedCallbacks.current.forEach(cb => cb(data));
         });
 
-        // ==========================================
         // EVENTOS MENSAJE ELIMINADO
-        // ==========================================
-        socketRef.current.on('message-deleted', (data) => {
-            console.log('🗑️ [SOCKET] Mensaje eliminado:', data);
+        newSocket.on('message-deleted', (data) => {
             messageDeletedCallbacks.current.forEach(cb => cb(data));
         });
 
-        // ==========================================
         // EVENTO MENSAJE EDITADO
-        // ==========================================
-        socketRef.current.on('message-edited', (data) => {
-            console.log('✏️ [SOCKET] Mensaje editado:', data);
+        newSocket.on('message-edited', (data) => {
             messageEditedCallbacks.current.forEach(cb => cb(data));
         });
 
-        // ==========================================
         // EVENTO "ESCRIBIENDO..."
-        // ==========================================
-        socketRef.current.on('user-typing', (data) => {
-            console.log('✍️ [SOCKET] Usuario escribiendo:', data);
+        newSocket.on('user-typing', (data) => {
             userTypingCallbacks.current.forEach(cb => cb(data));
         });
 
-        // ==========================================
         // EVENTO DE NO LEÍDOS
-        // ==========================================
-        socketRef.current.on('unread-update', (data) => {
-            console.log('📢 [SOCKET] Actualización de no leídos:', data);
+        newSocket.on('unread-update', (data) => {
             unreadUpdateCallbacks.current.forEach(cb => cb(data));
         });
 
-        // ==========================================
         // EVENTOS DE RESPUESTA DE NO LEÍDOS
-        // ==========================================
-        socketRef.current.on('unread-count-response', (data) => {
-            console.log('📊 [SOCKET] Respuesta de conteo de no leídos:', data);
+        newSocket.on('unread-count-response', (data) => {
             unreadCountResponseCallbacks.current.forEach(cb => cb(data));
         });
 
-        socketRef.current.on('total-unread-response', (data) => {
-            console.log('📊 [SOCKET] Respuesta de total de no leídos:', data);
+        newSocket.on('total-unread-response', (data) => {
             totalUnreadResponseCallbacks.current.forEach(cb => cb(data));
         });
 
-        // ==========================================
         // CLEANUP
-        // ==========================================
         return () => {
-            console.log('🧹 Limpiando socket y listeners...');
+            newSocket.off('connect');
+            newSocket.off('disconnect');
+            newSocket.off('connect_error');
+            newSocket.off('last-message-updated');
+            newSocket.off('message-status-updated');
+            newSocket.off('user-online');
+            newSocket.off('user-offline');
+            newSocket.off('user-status-updated');
+            newSocket.off('user-blocked');
+            newSocket.off('friend-status-changed');
+            newSocket.off('message-deleted');
+            newSocket.off('message-edited');
+            newSocket.off('user-typing');
+            newSocket.off('unread-update');
+            newSocket.off('unread-count-response');
+            newSocket.off('total-unread-response');
             
-            if (socketRef.current) {
-                // Remover listeners existentes
-                newMessageCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('new-message', cb);
-                });
-                newMessageCallbacks.current.clear();
-                
-                messageSentCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('message-sent', cb);
-                });
-                messageSentCallbacks.current.clear();
-                
-                userOnlineCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('user-online', cb);
-                });
-                userOnlineCallbacks.current.clear();
-                
-                userOfflineCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('user-offline', cb);
-                });
-                userOfflineCallbacks.current.clear();
-                
-                userStatusUpdatedCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('user-status-updated', cb);
-                });
-                userStatusUpdatedCallbacks.current.clear();
-                
-                messageDeletedCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('message-deleted', cb);
-                });
-                messageDeletedCallbacks.current.clear();
-                
-                messageEditedCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('message-edited', cb);
-                });
-                messageEditedCallbacks.current.clear();
-                
-                userTypingCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('user-typing', cb);
-                });
-                userTypingCallbacks.current.clear();
-
-                // Limpiar nuevos listeners
-                unreadUpdateCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('unread-update', cb);
-                });
-                unreadUpdateCallbacks.current.clear();
-
-                unreadCountResponseCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('unread-count-response', cb);
-                });
-                unreadCountResponseCallbacks.current.clear();
-
-                totalUnreadResponseCallbacks.current.forEach(cb => {
-                    socketRef.current?.off('total-unread-response', cb);
-                });
-                totalUnreadResponseCallbacks.current.clear();
-                
-                socketRef.current.off('connect');
-                socketRef.current.off('disconnect');
-                socketRef.current.off('connect_error');
-                socketRef.current.off('user-online');
-                socketRef.current.off('user-offline');
-                socketRef.current.off('user-status-updated');
-                socketRef.current.off('message-deleted');
-                socketRef.current.off('message-edited');
-                socketRef.current.off('user-typing');
-                
-                socketRef.current.disconnect();
-                socketRef.current = null;
-            }
+            newMessageCallbacks.current.clear();
+            messageSentCallbacks.current.clear();
+            lastMessageUpdateCallbacks.current.clear();
+            messageStatusUpdateCallbacks.current.clear();
+            userOnlineCallbacks.current.clear();
+            userOfflineCallbacks.current.clear();
+            userStatusUpdatedCallbacks.current.clear();
+            userBlockedCallbacks.current.clear();
+            friendStatusChangedCallbacks.current.clear();
+            messageDeletedCallbacks.current.clear();
+            messageEditedCallbacks.current.clear();
+            userTypingCallbacks.current.clear();
+            unreadUpdateCallbacks.current.clear();
+            unreadCountResponseCallbacks.current.clear();
+            totalUnreadResponseCallbacks.current.clear();
+            
+            newSocket.disconnect();
+            socketRef.current = null;
+            setSocket(null);
         };
     }, [user?.id]);
 
     // ============================================
-    // FUNCIONES EXISTENTES
+    // FUNCIONES
     // ============================================
     
     const joinChat = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
-            console.log(`📢 Uniéndose al chat: ${chatId}`);
             socketRef.current.emit('join-chat', chatId);
         }
     }, [isConnected]);
 
     const leaveChat = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
-            console.log(`👋 Saliendo del chat: ${chatId}`);
             socketRef.current.emit('leave-chat', chatId);
         }
     }, [isConnected]);
 
     const sendMessage = useCallback((chatId: string, content: string, userId: string, username: string, tempId?: string) => {
         if (socketRef.current && isConnected) {
-            console.log(`📨 Enviando mensaje al chat ${chatId}:`, content);
             socketRef.current.emit('send-message', {
                 chatId,
                 content,
@@ -300,24 +257,56 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, [isConnected]);
 
-    // ============================================
-    //  CONFIRMAR ENTREGA (PALOMITAS)
-    // ============================================
     const confirmMessageDelivered = useCallback((messageId: string) => {
         if (socketRef.current && isConnected) {
-            console.log(`📨 Confirmando entrega del mensaje ${messageId}`);
             socketRef.current.emit('message-delivered', { messageId });
         }
     }, [isConnected]);
 
-    const onNewMessage = useCallback((callback: (data: any) => void) => {
-        if (!socketRef.current) {
-            console.warn('⚠️ Socket no disponible para onNewMessage');
-            return;
+    // ============================================
+    //    ACTUALIZACIÓN DE CHATS EN TIEMPO REAL
+    // ============================================
+    const onLastMessageUpdate = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        lastMessageUpdateCallbacks.current.add(callback);
+        socketRef.current.on('last-message-updated', callback);
+    }, []);
+
+    const offLastMessageUpdate = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            lastMessageUpdateCallbacks.current.delete(callback);
+            socketRef.current.off('last-message-updated', callback);
+        } else {
+            lastMessageUpdateCallbacks.current.forEach(cb => socketRef.current?.off('last-message-updated', cb));
+            lastMessageUpdateCallbacks.current.clear();
         }
+    }, []);
+
+    // ============================================
+    //   FUNCION DE ACTUALIZACIÓN DE CHATS EN TIEMPO REAL
+    // ============================================
+    const onMessageStatusUpdate = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        messageStatusUpdateCallbacks.current.add(callback);
+        socketRef.current.on('message-status-updated', callback);
+    }, []);
+
+    const offMessageStatusUpdate = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            messageStatusUpdateCallbacks.current.delete(callback);
+            socketRef.current.off('message-status-updated', callback);
+        } else {
+            messageStatusUpdateCallbacks.current.forEach(cb => socketRef.current?.off('message-status-updated', cb));
+            messageStatusUpdateCallbacks.current.clear();
+        }
+    }, []);
+
+    const onNewMessage = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
         newMessageCallbacks.current.add(callback);
         socketRef.current.on('new-message', callback);
-        console.log('📝 Listener new-message registrado');
     }, []);
 
     const offNewMessage = useCallback((callback?: (data: any) => void) => {
@@ -325,22 +314,16 @@ export const useSocket = (): UseSocketReturn => {
         if (callback) {
             newMessageCallbacks.current.delete(callback);
             socketRef.current.off('new-message', callback);
-            console.log('🗑️ Listener new-message removido (específico)');
         } else {
-            newMessageCallbacks.current.forEach(cb => {
-                socketRef.current?.off('new-message', cb);
-            });
+            newMessageCallbacks.current.forEach(cb => socketRef.current?.off('new-message', cb));
             newMessageCallbacks.current.clear();
-            console.log('🗑️ Todos los listeners new-message removidos');
         }
     }, []);
 
-    // Función de bloqueo y desbloqueo
     const onUserBlocked = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         userBlockedCallbacks.current.add(callback);
         socketRef.current.on('user-blocked', callback);
-        console.log('📝 Listener user-blocked registrado');
     }, []);
 
     const offUserBlocked = useCallback((callback?: (data: any) => void) => {
@@ -349,9 +332,7 @@ export const useSocket = (): UseSocketReturn => {
             userBlockedCallbacks.current.delete(callback);
             socketRef.current.off('user-blocked', callback);
         } else {
-            userBlockedCallbacks.current.forEach(cb => {
-                socketRef.current?.off('user-blocked', cb);
-            });
+            userBlockedCallbacks.current.forEach(cb => socketRef.current?.off('user-blocked', cb));
             userBlockedCallbacks.current.clear();
         }
     }, []);
@@ -360,7 +341,6 @@ export const useSocket = (): UseSocketReturn => {
         if (!socketRef.current) return;
         friendStatusChangedCallbacks.current.add(callback);
         socketRef.current.on('friend-status-changed', callback);
-        console.log('📝 Listener friend-status-changed registrado');
     }, []);
 
     const offFriendStatusChanged = useCallback((callback?: (data: any) => void) => {
@@ -369,19 +349,15 @@ export const useSocket = (): UseSocketReturn => {
             friendStatusChangedCallbacks.current.delete(callback);
             socketRef.current.off('friend-status-changed', callback);
         } else {
-            friendStatusChangedCallbacks.current.forEach(cb => {
-                socketRef.current?.off('friend-status-changed', cb);
-            });
+            friendStatusChangedCallbacks.current.forEach(cb => socketRef.current?.off('friend-status-changed', cb));
             friendStatusChangedCallbacks.current.clear();
         }
     }, []);
 
-    // Función de mensajes
     const onMessageSent = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         messageSentCallbacks.current.add(callback);
         socketRef.current.on('message-sent', callback);
-        console.log('📝 Listener message-sent registrado');
     }, []);
 
     const offMessageSent = useCallback((callback?: (data: any) => void) => {
@@ -390,29 +366,21 @@ export const useSocket = (): UseSocketReturn => {
             messageSentCallbacks.current.delete(callback);
             socketRef.current.off('message-sent', callback);
         } else {
-            messageSentCallbacks.current.forEach(cb => {
-                socketRef.current?.off('message-sent', cb);
-            });
+            messageSentCallbacks.current.forEach(cb => socketRef.current?.off('message-sent', cb));
             messageSentCallbacks.current.clear();
         }
     }, []);
 
     const emitTyping = useCallback((chatId: string, isTyping: boolean) => {
         if (socketRef.current && isConnected) {
-            console.log(`✍️ Emitiendo typing en chat ${chatId}:`, isTyping);
             socketRef.current.emit('typing', { chatId, isTyping });
         }
     }, [isConnected]);
-
-    // ============================================
-    // FUNCIONES ONLINE/OFFLINE
-    // ============================================
 
     const onUserOnline = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         userOnlineCallbacks.current.add(callback);
         socketRef.current.on('user-online', callback);
-        console.log('📝 Listener user-online registrado');
     }, []);
 
     const offUserOnline = useCallback((callback?: (data: any) => void) => {
@@ -421,9 +389,7 @@ export const useSocket = (): UseSocketReturn => {
             userOnlineCallbacks.current.delete(callback);
             socketRef.current.off('user-online', callback);
         } else {
-            userOnlineCallbacks.current.forEach(cb => {
-                socketRef.current?.off('user-online', cb);
-            });
+            userOnlineCallbacks.current.forEach(cb => socketRef.current?.off('user-online', cb));
             userOnlineCallbacks.current.clear();
         }
     }, []);
@@ -432,7 +398,6 @@ export const useSocket = (): UseSocketReturn => {
         if (!socketRef.current) return;
         userOfflineCallbacks.current.add(callback);
         socketRef.current.on('user-offline', callback);
-        console.log('📝 Listener user-offline registrado');
     }, []);
 
     const offUserOffline = useCallback((callback?: (data: any) => void) => {
@@ -441,9 +406,7 @@ export const useSocket = (): UseSocketReturn => {
             userOfflineCallbacks.current.delete(callback);
             socketRef.current.off('user-offline', callback);
         } else {
-            userOfflineCallbacks.current.forEach(cb => {
-                socketRef.current?.off('user-offline', cb);
-            });
+            userOfflineCallbacks.current.forEach(cb => socketRef.current?.off('user-offline', cb));
             userOfflineCallbacks.current.clear();
         }
     }, []);
@@ -452,7 +415,6 @@ export const useSocket = (): UseSocketReturn => {
         if (!socketRef.current) return;
         userStatusUpdatedCallbacks.current.add(callback);
         socketRef.current.on('user-status-updated', callback);
-        console.log('📝 Listener user-status-updated registrado');
     }, []);
 
     const offUserStatusUpdated = useCallback((callback?: (data: any) => void) => {
@@ -461,30 +423,21 @@ export const useSocket = (): UseSocketReturn => {
             userStatusUpdatedCallbacks.current.delete(callback);
             socketRef.current.off('user-status-updated', callback);
         } else {
-            userStatusUpdatedCallbacks.current.forEach(cb => {
-                socketRef.current?.off('user-status-updated', cb);
-            });
+            userStatusUpdatedCallbacks.current.forEach(cb => socketRef.current?.off('user-status-updated', cb));
             userStatusUpdatedCallbacks.current.clear();
         }
     }, []);
 
     const emitUserOffline = useCallback((userId: string) => {
         if (socketRef.current && isConnected) {
-            console.log(`📤 Emitiendo offline para usuario ${userId}`);
             socketRef.current.emit('user-offline', { userId });
         }
     }, [isConnected]);
 
-    // ============================================
-    // NUEVAS FUNCIONES
-    // ============================================
-
-    // Mensaje eliminado
     const onMessageDeleted = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         messageDeletedCallbacks.current.add(callback);
         socketRef.current.on('message-deleted', callback);
-        console.log('📝 Listener message-deleted registrado');
     }, []);
 
     const offMessageDeleted = useCallback((callback?: (data: any) => void) => {
@@ -493,19 +446,15 @@ export const useSocket = (): UseSocketReturn => {
             messageDeletedCallbacks.current.delete(callback);
             socketRef.current.off('message-deleted', callback);
         } else {
-            messageDeletedCallbacks.current.forEach(cb => {
-                socketRef.current?.off('message-deleted', cb);
-            });
+            messageDeletedCallbacks.current.forEach(cb => socketRef.current?.off('message-deleted', cb));
             messageDeletedCallbacks.current.clear();
         }
     }, []);
 
-    // Mensaje editado
     const onMessageEdited = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         messageEditedCallbacks.current.add(callback);
         socketRef.current.on('message-edited', callback);
-        console.log('📝 Listener message-edited registrado');
     }, []);
 
     const offMessageEdited = useCallback((callback?: (data: any) => void) => {
@@ -514,19 +463,15 @@ export const useSocket = (): UseSocketReturn => {
             messageEditedCallbacks.current.delete(callback);
             socketRef.current.off('message-edited', callback);
         } else {
-            messageEditedCallbacks.current.forEach(cb => {
-                socketRef.current?.off('message-edited', cb);
-            });
+            messageEditedCallbacks.current.forEach(cb => socketRef.current?.off('message-edited', cb));
             messageEditedCallbacks.current.clear();
         }
     }, []);
 
-    // Usuario escribiendo
     const onUserTyping = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         userTypingCallbacks.current.add(callback);
         socketRef.current.on('user-typing', callback);
-        console.log('📝 Listener user-typing registrado');
     }, []);
 
     const offUserTyping = useCallback((callback?: (data: any) => void) => {
@@ -535,22 +480,15 @@ export const useSocket = (): UseSocketReturn => {
             userTypingCallbacks.current.delete(callback);
             socketRef.current.off('user-typing', callback);
         } else {
-            userTypingCallbacks.current.forEach(cb => {
-                socketRef.current?.off('user-typing', cb);
-            });
+            userTypingCallbacks.current.forEach(cb => socketRef.current?.off('user-typing', cb));
             userTypingCallbacks.current.clear();
         }
     }, []);
-
-    // ============================================
-    // FUNCIONES DE NO LEÍDOS
-    // ============================================
 
     const onUnreadUpdate = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         unreadUpdateCallbacks.current.add(callback);
         socketRef.current.on('unread-update', callback);
-        console.log('📝 Listener unread-update registrado');
     }, []);
 
     const offUnreadUpdate = useCallback((callback?: (data: any) => void) => {
@@ -559,47 +497,37 @@ export const useSocket = (): UseSocketReturn => {
             unreadUpdateCallbacks.current.delete(callback);
             socketRef.current.off('unread-update', callback);
         } else {
-            unreadUpdateCallbacks.current.forEach(cb => {
-                socketRef.current?.off('unread-update', cb);
-            });
+            unreadUpdateCallbacks.current.forEach(cb => socketRef.current?.off('unread-update', cb));
             unreadUpdateCallbacks.current.clear();
         }
     }, []);
 
-    // Emitir set-user manualmente
     const setUser = useCallback((userId: string) => {
         if (socketRef.current && isConnected) {
-            console.log(`👤 Emitiendo set-user para usuario ${userId}`);
             socketRef.current.emit('set-user', userId);
         }
     }, [isConnected]);
 
-    // Marcar mensajes como leídos
     const markAsRead = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
-            console.log(`👀 Emitiendo mark-as-read para chat ${chatId}`);
             socketRef.current.emit('mark-as-read', { chatId });
         }
     }, [isConnected]);
 
-    // Obtener conteo de no leídos de un chat
     const getUnreadCount = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
-            console.log(`📊 Solicitando conteo de no leídos para chat ${chatId}`);
             socketRef.current.emit('get-unread-count', { chatId });
         }
     }, [isConnected]);
 
-    // Obtener total de no leídos
     const getTotalUnread = useCallback(() => {
         if (socketRef.current && isConnected) {
-            console.log('📊 Solicitando total de no leídos');
             socketRef.current.emit('get-total-unread');
         }
     }, [isConnected]);
 
     return {
-        socket: socketRef.current,
+        socket,
         isConnected,
         joinChat,
         leaveChat,
@@ -609,6 +537,10 @@ export const useSocket = (): UseSocketReturn => {
         emitTyping,
         onMessageSent,
         offMessageSent,
+        onLastMessageUpdate,
+        offLastMessageUpdate,
+        onMessageStatusUpdate,
+        offMessageStatusUpdate,
         // ONLINE/OFFLINE
         onUserOnline,
         offUserOnline,
@@ -623,20 +555,16 @@ export const useSocket = (): UseSocketReturn => {
         offMessageEdited,
         onUserTyping,
         offUserTyping,
-        // Funciones de no leídos
         onUnreadUpdate,
         offUnreadUpdate,
-        // funcion para no leidos
         markAsRead,
         getUnreadCount,
         getTotalUnread,
         setUser,
-        // Función para bloqueo y desbloqueo
         onUserBlocked,
         offUserBlocked,
         onFriendStatusChanged,
         offFriendStatusChanged,
-        //  Confirmar entrega (palomitas)
         confirmMessageDelivered
     };
 };

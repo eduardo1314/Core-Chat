@@ -1,24 +1,7 @@
 import api from './api';
-import { ApiResponse } from '../types';
+import { ApiResponse, Chat } from '../types';
 
-export interface Chat {
-    id: string;
-    name: string | null;
-    type: 'private' | 'group';
-    created_by: string;
-    created_at: string;
-    updated_at: string;
-    lastMessage?: {
-        content: string;
-        created_at: string;
-        sender: {
-            id: string;
-            username: string;
-        };
-    };
-    unreadCount?: number;
-    participants?: any[];
-}
+
 
 // Obtener chats activos
 export async function getActiveChatsService(): Promise<ApiResponse<Chat[]>> {
@@ -71,7 +54,7 @@ export async function createChatService(data: { type: string; name?: string; par
 }
 
 
-// Eliminar un chat (NUEVO)
+// Eliminar un chat 
 export async function deleteChatService(chatId: string): Promise<ApiResponse<null>> {
     try {
         const response = await api.delete(`/chats/${chatId}`);

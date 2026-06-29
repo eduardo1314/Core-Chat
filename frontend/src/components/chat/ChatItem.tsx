@@ -11,6 +11,7 @@ interface ChatItemProps {
     selectedChatId: string | null;
     user: any;
     avatarUrl?: string | null;
+    typingUsers?: Map<string, string>;
     onSelectChat: (chatId: string, displayName: string, chatAvatar?: string | null, isOnline?: boolean, lastSeen?: string | null) => void;
     onClearUnread: (chatId: string) => void;
     onMarkAsRead: (chatId: string) => void;
@@ -31,9 +32,9 @@ const ChatItem: React.FC<ChatItemProps> = ({
     selectedChatId,
     user,
     avatarUrl,
+    typingUsers = new Map(),
     onSelectChat,
     onClearUnread,
-    onMarkAsRead,
     onArchiveChat,
     onUnarchiveChat,
     onDeleteChat,
@@ -57,12 +58,61 @@ const ChatItem: React.FC<ChatItemProps> = ({
         setImageError(false);
     }, [avatar]);
 
+    
     const handleSelect = () => {
+        if (chat.id === selectedChatId) return;
         onClearUnread(chat.id);
-        onMarkAsRead(chat.id);
         onSelectChat(chat.id, displayName, avatarUrl || null, isOnline, lastSeen);
     };
 
+    // ============================================
+    // PALOMITAS PARA LA LISTA DE CHATS
+    // ============================================
+    const renderMessageStatusIcon = () => {
+        if (!chat.lastMessage) return null;
+        
+        const isOwn = chat.lastMessage.sender?.id === user?.id;
+        if (!isOwn) return null;
+
+        const isRead = chat.lastMessage.is_read === true;
+        const status = chat.lastMessage.status;
+
+        if (isRead || status === 'read') {
+            return <span className="text-emerald-500 text-[10px] font-semibold flex items-center gap-0.5">✓✓</span>;
+        }
+        if (status === 'delivered') {
+            return <span className="text-gray-400 text-[10px] flex items-center gap-0.5">✓✓</span>;
+        }
+        if (status === 'sent') {
+            return <span className="text-gray-400 text-[10px]">✓</span>;
+        }
+        if (status === 'pending' || chat.lastMessage.pending) {
+            return <span className="text-gray-400 text-[10px] animate-spin">⏳</span>;
+        }
+        if (isRead) {
+            return <span className="text-emerald-500 text-[10px] font-semibold flex items-center gap-0.5">✓✓</span>;
+        }
+
+        return null;
+    };
+
+    // ============================================
+    // INDICADOR DE "ESCRIBIENDO..."
+    // ============================================
+    const renderTypingIndicator = () => {
+        if (!typingUsers?.has(chat.id)) return null;
+        
+        return (
+            <p className="text-sm text-emerald-500 dark:text-emerald-400 truncate mt-0.5 flex items-center gap-1">
+                <span className="animate-pulse">●</span>
+                {typingUsers.get(chat.id)} está escribiendo...
+            </p>
+        );
+    };
+
+    // ============================================
+    // RENDERIZAR AVATAR
+    // ============================================
     const renderAvatar = () => {
         const isImageUrl = avatar?.startsWith('http') || avatar?.startsWith('https');
 
@@ -83,7 +133,7 @@ const ChatItem: React.FC<ChatItemProps> = ({
         if (avatar === '👤' || avatar === '💬' || avatar.length <= 2) {
             return (
                 <div className={`w-12 h-12 bg-gradient-to-r ${avatarBg} rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md flex-shrink-0`}>
-                    {avatar === '👤' || avatar === '💬' ? avatar : avatar}
+                    {avatar}
                 </div>
             );
         }
@@ -122,8 +172,11 @@ const ChatItem: React.FC<ChatItemProps> = ({
                             </span>
                         )}
                     </div>
-                    {chat.lastMessage && (
-                        <p className="text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                    {typingUsers?.has(chat.id) ? (
+                        renderTypingIndicator()
+                    ) : chat.lastMessage && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5 flex items-center gap-1">
+                            {renderMessageStatusIcon()}
                             {chat.lastMessage.sender?.id === user?.id ? 'Tú: ' : ''}
                             {chat.lastMessage.content}
                         </p>
@@ -159,7 +212,7 @@ const ChatItem: React.FC<ChatItemProps> = ({
                                     }}
                                     className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition"
                                 >
-                                    <span className="w-5 text-center"></span>
+                                    <span className="w-5 text-center">📦</span>
                                     Archivar chat
                                 </button>
                                 <button
@@ -170,7 +223,7 @@ const ChatItem: React.FC<ChatItemProps> = ({
                                     }}
                                     className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition border-t border-gray-200 dark:border-gray-700"
                                 >
-                                    <span className="w-5 text-center"></span>
+                                    <span className="w-5 text-center">🗑️</span>
                                     Eliminar chat
                                 </button>
                             </>
@@ -183,7 +236,7 @@ const ChatItem: React.FC<ChatItemProps> = ({
                                 }}
                                 className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-3 transition"
                             >
-                                <span className="w-5 text-center"></span>
+                                <span className="w-5 text-center">📂</span>
                                 Desarchivar chat
                             </button>
                         )}

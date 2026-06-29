@@ -24,9 +24,10 @@ export class ChatService {
         const results: ChatResponse[] = [];
         
         for (const chat of chats) {
-            // Obtener último mensaje
+            // Obtener último mensaje con status e is_read
             const lastMessage = await Message.findOne({
                 where: { chat_id: chat.id, is_deleted: false },
+                attributes: ['id', 'content', 'created_at', 'status', 'is_read', 'user_id'],
                 order: [['created_at', 'DESC']],
                 include: [
                     { model: User, attributes: ['id', 'username'] }
@@ -60,8 +61,11 @@ export class ChatService {
                 updated_at: chat.updated_at,
                 Participants: participantsList || undefined,
                 lastMessage: lastMessage ? {
+                    id: lastMessage.id,
                     content: lastMessage.content,
                     created_at: lastMessage.created_at,
+                    status: lastMessage.status || 'sent',
+                    is_read: lastMessage.is_read || false,
                     sender: {
                         id: sender?.id || '',
                         username: sender?.username || ''
@@ -106,15 +110,17 @@ export class ChatService {
         const results: ChatResponse[] = [];
         
         for (const chat of chats) {
+            //  Obtener último mensaje con status e is_read
             const lastMessage = await Message.findOne({
                 where: { chat_id: chat.id, is_deleted: false },
+                attributes: ['id', 'content', 'created_at', 'status', 'is_read', 'user_id'],
                 order: [['created_at', 'DESC']],
                 include: [
                     { model: User, attributes: ['id', 'username'] }
                 ]
             });
             
-            // Obtener participantes (excluyendo al usuario actual)
+            // Obtener participantes 
             let participantsList = null;
             if (chat.type === 'private') {
                 const participantsData = await Participant.findAll({
@@ -132,6 +138,7 @@ export class ChatService {
             
             const sender = lastMessage?.get('User') as { id: string; username: string } | undefined;
 
+            
             results.push({
                 id: chat.id,
                 name: chat.name,
@@ -141,8 +148,11 @@ export class ChatService {
                 updated_at: chat.updated_at,
                 Participants: participantsList || undefined,
                 lastMessage: lastMessage ? {
+                    id: lastMessage.id,
                     content: lastMessage.content,
                     created_at: lastMessage.created_at,
+                    status: lastMessage.status || 'sent',
+                    is_read: lastMessage.is_read || false,
                     sender: {
                         id: sender?.id || '',
                         username: sender?.username || ''
@@ -187,8 +197,10 @@ export class ChatService {
         const results: ChatResponse[] = [];
         
         for (const chat of chats) {
+            //  Obtener último mensaje con status e is_read
             const lastMessage = await Message.findOne({
                 where: { chat_id: chat.id, is_deleted: false },
+                attributes: ['id', 'content', 'created_at', 'status', 'is_read', 'user_id'],
                 order: [['created_at', 'DESC']],
                 include: [
                     { model: User, attributes: ['id', 'username'] }
@@ -206,6 +218,7 @@ export class ChatService {
             
             const sender = lastMessage?.get('User') as { id: string; username: string } | undefined;
 
+            // respuesta de mensaje
             results.push({
                 id: chat.id,
                 name: chat.name,
@@ -215,8 +228,11 @@ export class ChatService {
                 updated_at: chat.updated_at,
                 Participants: participantsList || undefined,
                 lastMessage: lastMessage ? {
+                    id: lastMessage.id,
                     content: lastMessage.content,
                     created_at: lastMessage.created_at,
+                    status: lastMessage.status || 'sent',
+                    is_read: lastMessage.is_read || false,
                     sender: {
                         id: sender?.id || '',
                         username: sender?.username || ''
@@ -336,8 +352,10 @@ export class ChatService {
             throw new Error('Chat no encontrado');
         }
         
+        // Obtener último mensaje con status e is_read
         const lastMessage = await Message.findOne({
             where: { chat_id: chat.id, is_deleted: false },
+            attributes: ['id', 'content', 'created_at', 'status', 'is_read', 'user_id'],
             order: [['created_at', 'DESC']],
             include: [
                 { model: User, attributes: ['id', 'username'] }
@@ -347,12 +365,11 @@ export class ChatService {
         const sender = lastMessage?.get('User') as { id: string; username: string } | undefined;
         const participants = chat.get('Participants') || [];
         
-        // Formatear participantes
-       
-const formattedParticipants = Array.isArray(participants) 
-    ? participants.map((p: any) => p.toJSON ? p.toJSON() : p) 
-    : [];
+        const formattedParticipants = Array.isArray(participants) 
+            ? participants.map((p: any) => p.toJSON ? p.toJSON() : p) 
+            : [];
 
+        // mensaje de respuesta
         return {
             id: chat.id,
             name: chat.name,
@@ -362,8 +379,11 @@ const formattedParticipants = Array.isArray(participants)
             updated_at: chat.updated_at,
             Participants: formattedParticipants || undefined,
             lastMessage: lastMessage ? {
+                id: lastMessage.id,
                 content: lastMessage.content,
                 created_at: lastMessage.created_at,
+                status: lastMessage.status || 'sent',
+                is_read: lastMessage.is_read || false,
                 sender: {
                     id: sender?.id || '',
                     username: sender?.username || ''
@@ -472,6 +492,6 @@ const formattedParticipants = Array.isArray(participants)
         await Message.destroy({ where: { chat_id: chatId } });
         await Chat.destroy({ where: { id: chatId } });
     }
-};
+}
 
 export const chatService = new ChatService();

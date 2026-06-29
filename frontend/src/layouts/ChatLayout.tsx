@@ -7,6 +7,7 @@ import Sidebar from '../components/chat/Sidebar';
 import SettingsMenu from '../components/common/SettingsMenu';
 import { markAsReadService } from '../services/messages.service'; 
 import ChatWindow from '../components/chat/ChatArea';
+import { ChatBackgroundProvider } from '../context/ChatBackgroundContext';
 
 // ============================================
 // COMPONENTE PRINCIPAL: ChatLayout
@@ -25,20 +26,6 @@ const ChatLayout: React.FC = () => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     // ==========================================
-    // EFECTO: Escuchar actualizaciones de estado de mensajes
-    // ==========================================
-    useEffect(() => {
-        if (!socket) return;
-
-        socket.on('message-status-updated', () => {
-        });
-
-        return () => {
-            socket.off('message-status-updated');
-        };
-    }, [socket]);
-
-    // ==========================================
     // HOOKS: Detección de cierre de pestaña y reconexión
     // ==========================================
     usePageVisibility();
@@ -49,12 +36,9 @@ const ChatLayout: React.FC = () => {
     // ==========================================
     const handleClearUnread = useCallback(async (chatId: string) => {
         try {
-            const response = await markAsReadService(chatId);
-            if (response.success) {
-                console.log('✅ Mensajes marcados como leídos para el chat:', chatId);
-            }
+            await markAsReadService(chatId);
         } catch (error) {
-            console.error('❌ Error al marcar mensajes como leídos:', error);
+            console.error('Error al marcar mensajes como leídos:', error);
         }
     }, []);
 
@@ -68,17 +52,11 @@ const ChatLayout: React.FC = () => {
         isOnline?: boolean, 
         lastSeen?: string | null
     ) => {
-        console.log('📌 [ChatLayout] handleSelectChat - chatAvatar recibido:', chatAvatar);
-        console.log('📌 [ChatLayout] handleSelectChat - chatName recibido:', chatName);
-        console.log('📌 [ChatLayout] handleSelectChat - chatId recibido:', chatId);
-        
         setSelectedChatId(chatId);
         setSelectedChatName(chatName || 'Chat');
         setSelectedChatAvatar(chatAvatar || null);
         setSelectedChatStatus(isOnline || false);
         setSelectedChatLastSeen(lastSeen || null);
-
-        console.log('📌 [ChatLayout] selectedChatAvatar guardado:', chatAvatar || null);
 
         if (chatId) {
             handleClearUnread(chatId);
@@ -91,7 +69,6 @@ const ChatLayout: React.FC = () => {
     const handleLogout = async () => {
         try {
             if (user?.id) {
-                console.log(`📤 Usuario ${user.id} cerrando sesión`);
                 emitUserOffline(user.id);
                 await new Promise(resolve => setTimeout(resolve, 100));
                 if (socket) {
@@ -100,7 +77,7 @@ const ChatLayout: React.FC = () => {
             }
             await logout();
         } catch (error) {
-            console.error('❌ Error al cerrar sesión:', error);
+            console.error('Error al cerrar sesión:', error);
             await logout();
         }
     };
@@ -212,8 +189,6 @@ const ChatLayout: React.FC = () => {
     // ==========================================
     // RENDER
     // ==========================================
-    console.log('📌 [ChatLayout] Render - selectedChatAvatar:', selectedChatAvatar);
-
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-slate-900 dark:via-blue-900 dark:to-slate-900">
             
@@ -249,13 +224,15 @@ const ChatLayout: React.FC = () => {
                     selectedChatId={selectedChatId}
                     onClearUnread={handleClearUnread} 
                 />
-                <ChatWindow 
-                    chatId={selectedChatId} 
-                    chatName={selectedChatName}
-                    chatAvatar={selectedChatAvatar ?? undefined}
-                    isOnline={selectedChatStatus}
-                    lastSeen={selectedChatLastSeen}
-                />
+                <ChatBackgroundProvider chatId={selectedChatId}>
+                    <ChatWindow 
+                        chatId={selectedChatId} 
+                        chatName={selectedChatName}
+                        chatAvatar={selectedChatAvatar ?? undefined}
+                        isOnline={selectedChatStatus}
+                        lastSeen={selectedChatLastSeen}
+                    />
+                </ChatBackgroundProvider>
             </div>
         </div>
     );

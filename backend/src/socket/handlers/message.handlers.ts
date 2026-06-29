@@ -86,14 +86,21 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
                 status: 'sent'
             });
 
-            // Actualizar chat para todos
-            io.to(chatId).emit('chat-updated', {
-                chatId,
-                lastMessage: content,
-                lastMessageId: message.id,
-                timestamp: new Date().toISOString(),
-                userId,
-                username
+            // funcion de mensajes en tiempo real
+            io.emit('last-message-updated', {
+                chatId: chatId,
+                message: {
+                    id: message.id,
+                    content: content,
+                    created_at: message.created_at || new Date().toISOString(),
+                    status: 'sent',
+                    is_read: false,
+                    type: 'text',
+                    sender: {
+                        id: userId,
+                        username: username || 'Usuario'
+                    }
+                }
             });
 
             // Emitir actualización de no leídos a los participantes
@@ -142,6 +149,23 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
                     messageId: message.id,
                     status: 'delivered',
                     chatId: message.chat_id
+                });
+
+                // Emitir last-message-updated para actualizar palomitas en Sidebar
+                io.emit('last-message-updated', {
+                    chatId: message.chat_id,
+                    message: {
+                        id: message.id,
+                        content: message.content,
+                        created_at: message.created_at,
+                        status: 'delivered',
+                        is_read: false,
+                        type: message.type || 'text',
+                        sender: {
+                            id: message.user_id,
+                            username: 'Usuario'
+                        }
+                    }
                 });
 
                 logger.info(`✅ Mensaje ${messageId} entregado a usuario ${message.user_id}`);
@@ -274,7 +298,7 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
                     is_read: true,
                     status: 'read'
                 },
-                attributes: ['id', 'user_id']
+                attributes: ['id', 'user_id', 'content', 'created_at', 'type']
             });
 
             // Notificar a cada emisor que sus mensajes fueron leídos
@@ -284,6 +308,23 @@ export const setupMessageHandlers = (io: Server, socket: Socket) => {
                     status: 'read',
                     readBy: userId,
                     chatId: chatId
+                });
+
+                //  Emitir last-message-updated para actualizar palomitas en Sidebar
+                io.emit('last-message-updated', {
+                    chatId: chatId,
+                    message: {
+                        id: msg.id,
+                        content: msg.content,
+                        created_at: msg.created_at,
+                        status: 'read',
+                        is_read: true,
+                        type: msg.type || 'text',
+                        sender: {
+                            id: msg.user_id,
+                            username: 'Usuario'
+                        }
+                    }
                 });
             }
 

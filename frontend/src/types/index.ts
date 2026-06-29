@@ -75,6 +75,7 @@ export interface AuthResponse {
 // ====================
 // tipos de chats
 // ====================
+
 export interface Chat {
     id: string;
     name: string | null;
@@ -85,8 +86,11 @@ export interface Chat {
     Users?: any[];
     Participants?: any[];
     lastMessage?: {
+        id?: string; 
         content: string;
         created_at: string;
+        status?: 'pending' | 'sent' | 'delivered' | 'read';
+        is_read?: boolean;
         sender: {
             id: string;
             username: string;
@@ -136,13 +140,9 @@ export interface FriendRequest {
     };
 }
 
-// ==================== 
-// Tipos de mensajes
-// ====================
-
 
 // ============================================
-// TIPOS DE MENSAJES (CORREGIDOS)
+// TIPOS DE MENSAJES 
 // ============================================
 
 export interface Message {
@@ -169,10 +169,10 @@ export interface Message {
     pending?: boolean;
 }
 
-// Respuesta de mensajes (coincide con el backend)
+//respuesta de mensages
 export interface MessagesResponse {
     success: boolean;
-    data: Message[];           // Cambiado de 'messages' a 'data'
+    data: Message[];           
     total: number;
     page: number;
     limit: number;
