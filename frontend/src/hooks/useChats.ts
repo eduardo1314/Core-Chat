@@ -40,6 +40,7 @@ export const useChats = (): UseChatsReturn => {
     const [error, setError] = useState<string | null>(null);
     
     const isLoadingRef = useRef(false);
+    const chatCreationLockRef = useRef<Set<string>>(new Set());
 
     // ============================================
     // CARGAR CHATS ACTIVOS
@@ -73,7 +74,6 @@ export const useChats = (): UseChatsReturn => {
                         return backendChat;
                     });
                     
-                    // funcion de ordenamiento de chats
                     return merged.sort((a, b) => {
                         const timeA = a.lastMessage?.created_at 
                             ? new Date(a.lastMessage.created_at).getTime() 
@@ -242,10 +242,30 @@ export const useChats = (): UseChatsReturn => {
     }, [archivedChats]);
 
     // ============================================
-    // CREAR CHAT
+    //  CREAR CHAT 
     // ============================================
     const createChat = useCallback(async (participantIds: string[], type = 'private', name?: string): Promise<Chat | null> => {
+        //  Bloquear creación duplicada para el mismo usuario
+        const lockKey = participantIds.sort().join('-');
+        if (chatCreationLockRef.current.has(lockKey)) return null;
+        chatCreationLockRef.current.add(lockKey);
+        
         try {
+            //  Buscar en estado local primero
+            const allChats = [...activeChats, ...archivedChats];
+            const existingChat = allChats.find(chat => {
+                if (chat.type !== 'private') return false;
+                if (Array.isArray(chat.Participants) && chat.Participants.length > 0) {
+                    return chat.Participants.some((p: any) => participantIds.includes(p.id) || participantIds.includes(p.user_id));
+                }
+                if (Array.isArray(chat.Users) && chat.Users.length > 0) {
+                    return chat.Users.some((u: any) => participantIds.includes(u.id));
+                }
+                return false;
+            });
+            
+            if (existingChat) return existingChat;
+            
             let chatName = name;
             if (type === 'private' && !chatName && participantIds.length === 1) {
                 chatName = null as any;
@@ -253,15 +273,23 @@ export const useChats = (): UseChatsReturn => {
             
             const response = await createChatService({ type, name: chatName || undefined, participantIds });
             if (response.success && response.data) {
-                setActiveChats(prev => [response.data!, ...prev]);
+                setActiveChats(prev => {
+                    if (prev.some(c => c.id === response.data!.id)) return prev;
+                    return [response.data!, ...prev];
+                });
                 return response.data;
             }
             return null;
         } catch (err: any) {
             setError(err.error || 'Error al crear chat');
             return null;
+        } finally {
+            //  Liberar bloqueo después de 2 segundos
+            setTimeout(() => {
+                chatCreationLockRef.current.delete(lockKey);
+            }, 2000);
         }
-    }, []);
+    }, [activeChats, archivedChats]);
 
     // ============================================
     // CARGA INICIAL
