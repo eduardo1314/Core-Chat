@@ -47,11 +47,22 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const inputRef = useRef<HTMLTextAreaElement>(null);           
     const { getBackgroundStyles } = useChatBackground();
 
+    //  Estados para tiempo real
+    const [currentIsOnline, setCurrentIsOnline] = useState(isOnline);
+    const [currentLastSeen, setCurrentLastSeen] = useState(lastSeen);
+    const [, forceUpdate] = useState(0);
+
     // ============================================
     // HOOKS
     // ============================================
     const { user } = useAuth();                                   
-    const { socket } = useSocket();                               
+    const { 
+        socket,
+        onUserOnline, 
+        offUserOnline, 
+        onUserOffline, 
+        offUserOffline 
+    } = useSocket();                               
     const { 
         messages,                                                
         sendMessage,                                              
@@ -70,6 +81,46 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     useEffect(() => {
         setAvatarError(false);
     }, [chatAvatar]);
+
+    // Sincronizar con props
+    useEffect(() => {
+        setCurrentIsOnline(isOnline);
+        setCurrentLastSeen(lastSeen);
+    }, [isOnline, lastSeen]);
+
+    // Actualizar contador cada 10s
+    useEffect(() => {
+        const interval = setInterval(() => forceUpdate(prev => prev + 1), 10000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Verificar estado al montar
+    useEffect(() => {
+        if (isOnline && lastSeen) {
+            const diff = (Date.now() - new Date(lastSeen).getTime()) / 1000;
+            if (diff > 120) setCurrentIsOnline(false);
+        }
+        if (!isOnline && !lastSeen) {
+            setCurrentLastSeen(new Date().toISOString());
+        }
+    }, []);
+
+    // Escuchar cambios en tiempo real
+    useEffect(() => {
+        const handleUserOnline = () => setCurrentIsOnline(true);
+        const handleUserOffline = () => {
+            setCurrentIsOnline(false);
+            setCurrentLastSeen(new Date().toISOString());
+        };
+
+        onUserOnline(handleUserOnline);
+        onUserOffline(handleUserOffline);
+
+        return () => {
+            offUserOnline(handleUserOnline);
+            offUserOffline(handleUserOffline);
+        };
+    }, [onUserOnline, offUserOnline, onUserOffline, offUserOffline]);
 
     // ============================================
     //  Cerrar menú principal al hacer clic fuera
@@ -396,14 +447,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                 {chatName}
                             </h3>
                             <p className="text-xs flex items-center gap-1.5 mt-0.5">
-                                {isOnline ? (
+                                {currentIsOnline ? (
                                     <>
                                         <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                                         <span className="text-emerald-500 font-medium">En línea</span>
                                     </>
                                 ) : (
                                     <span className="text-gray-400">
-                                        {formatLastSeen(lastSeen)}
+                                        {currentLastSeen ? `últ. vez ${formatLastSeen(currentLastSeen)}` : ''}
                                     </span>
                                 )}
                             </p>
@@ -500,7 +551,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             </div>
                             <h4 className="text-xl font-semibold text-gray-800 dark:text-white">{chatName}</h4>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                {isOnline ? '🟢 En línea' : `Última vez: ${formatLastSeen(lastSeen)}`}
+                                {currentIsOnline ? '🟢 En línea' : `Última vez: ${formatLastSeen(currentLastSeen)}`}
                             </p>
                             <div className="w-full mt-6 space-y-3">
                                 <div className="flex justify-between py-2 border-b border-gray-200 dark:border-gray-700">
@@ -509,14 +560,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                                 </div>
                                 <div className="flex justify-between py-2 border-b border-gray-200 dark:border-gray-700">
                                     <span className="text-gray-500 dark:text-gray-400">Estado</span>
-                                    <span className={`${isOnline ? 'text-green-500' : 'text-gray-400'}`}>
-                                        {isOnline ? 'En línea' : 'Offline'}
+                                    <span className={`${currentIsOnline ? 'text-green-500' : 'text-gray-400'}`}>
+                                        {currentIsOnline ? 'En línea' : 'Offline'}
                                     </span>
                                 </div>
-                                {lastSeen && !isOnline && (
+                                {currentLastSeen && !currentIsOnline && (
                                     <div className="flex justify-between py-2 border-b border-gray-200 dark:border-gray-700">
                                         <span className="text-gray-500 dark:text-gray-400">Última conexión</span>
-                                        <span className="text-gray-800 dark:text-white">{formatLastSeen(lastSeen)}</span>
+                                        <span className="text-gray-800 dark:text-white">{formatLastSeen(currentLastSeen)}</span>
                                     </div>
                                 )}
                             </div>

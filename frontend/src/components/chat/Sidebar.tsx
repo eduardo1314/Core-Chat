@@ -45,7 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         rejectRequest,
         loadPendingRequests,
         blockUser,
-        loadFriends
+        loadFriends,
     } = useFriends();
 
     const {
@@ -73,6 +73,14 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         offNewMessage,
         onMessageSent,
         offMessageSent,
+        onUserOnline,
+        offUserOnline,
+        onUserOffline,
+        offUserOffline,
+        onReconnected,
+        offReconnected,
+        onOnlineUsersList,
+        offOnlineUsersList,
     } = useSocket();
 
     // ============================================
@@ -91,6 +99,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     const [totalUnread, setTotalUnread] = useState(0);
     const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
     const lastChatCreationRef = useRef<number>(0);
+    const statusUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // ============================================
     // FUNCIÓN PARA VERIFICAR SI ESTÁ REALMENTE EN LÍNEA
@@ -105,6 +114,24 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
         
         return diffSeconds < 120;
     }, []);
+
+    // ============================================
+    // FUNCIÓN PARA ACTUALIZAR ESTADOS (CON DEBOUNCE)
+    // ============================================
+    const refreshStatus = useCallback(() => {
+        // Limpiar timeout anterior
+        if (statusUpdateTimeoutRef.current) {
+            clearTimeout(statusUpdateTimeoutRef.current);
+        }
+
+        // Debounce para evitar múltiples actualizaciones
+        statusUpdateTimeoutRef.current = setTimeout(() => {
+            console.log('🔄 Actualizando estados de amigos y chats...');
+            loadFriends();
+            loadActiveChats();
+            statusUpdateTimeoutRef.current = null;
+        }, 300);
+    }, [loadFriends, loadActiveChats]);
 
     // ============================================
     // LIMPIAR NO LEÍDOS DE UN CHAT
@@ -148,39 +175,39 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     // ============================================
     // FUNCIÓN COMÚN PARA ACTUALIZAR CHAT CON NUEVO MENSAJE
     // ============================================
-   const updateChatWithNewMessage = useCallback((data: any) => {
-    const chatId = data.chat_id || data.chatId;
-    if (!chatId) return;
+    const updateChatWithNewMessage = useCallback((data: any) => {
+        const chatId = data.chat_id || data.chatId;
+        if (!chatId) return;
 
-    setActiveChats(prev => {
-        const chatIndex = prev.findIndex(chat => chat.id === chatId);
-        
-        if (chatIndex === -1) {
-            loadActiveChats();
-            return prev;
-        }
-        
-        const updatedChat = {
-            ...prev[chatIndex],
-            lastMessage: {
-                id: data.id,
-                content: data.content,
-                sender_id: data.user_id || data.sender?.id,
-                status: data.status || 'sent',
-                is_read: data.is_read || false,
-                created_at: data.created_at || new Date().toISOString(),
-                type: data.type || 'text',
-                chat_id: chatId,
-                sender: data.sender || { id: data.user_id, username: 'Usuario' }
-            },
-            updated_at: data.created_at || new Date().toISOString()
-        };
-        
-        // Mover al principio
-        const newList = prev.filter(chat => chat.id !== chatId);
-        return [updatedChat, ...newList];
-    });
-}, [loadActiveChats, setActiveChats]);
+        setActiveChats(prev => {
+            const chatIndex = prev.findIndex(chat => chat.id === chatId);
+            
+            if (chatIndex === -1) {
+                loadActiveChats();
+                return prev;
+            }
+            
+            const updatedChat = {
+                ...prev[chatIndex],
+                lastMessage: {
+                    id: data.id,
+                    content: data.content,
+                    sender_id: data.user_id || data.sender?.id,
+                    status: data.status || 'sent',
+                    is_read: data.is_read || false,
+                    created_at: data.created_at || new Date().toISOString(),
+                    type: data.type || 'text',
+                    chat_id: chatId,
+                    sender: data.sender || { id: data.user_id, username: 'Usuario' }
+                },
+                updated_at: data.created_at || new Date().toISOString()
+            };
+            
+            // Mover al principio
+            const newList = prev.filter(chat => chat.id !== chatId);
+            return [updatedChat, ...newList];
+        });
+    }, [loadActiveChats, setActiveChats]);
 
     // ============================================
     //  SINCRONIZAR LISTA DE CHATS EN TIEMPO REAL (useSocket)
@@ -188,36 +215,36 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     useEffect(() => {
         if (!isConnected) return;
 
-      const handleLastMessageUpdate = (data: { chatId: string; message: any }) => {
-    setActiveChats(prev => {
-        const chatIndex = prev.findIndex(chat => chat.id === data.chatId);
-        
-        if (chatIndex === -1) {
-            loadActiveChats();
-            return prev;
-        }
-        
-        const updatedChat = {
-            ...prev[chatIndex],
-            lastMessage: {
-                id: data.message.id,
-                content: data.message.content,
-                sender_id: data.message.sender?.id || data.message.user_id,
-                status: data.message.status || 'sent',
-                is_read: data.message.is_read || false,
-                created_at: data.message.created_at || new Date().toISOString(),
-                type: data.message.type || 'text',
-                chat_id: data.chatId,
-                sender: data.message.sender
-            },
-            updated_at: data.message.created_at || new Date().toISOString()
+        const handleLastMessageUpdate = (data: { chatId: string; message: any }) => {
+            setActiveChats(prev => {
+                const chatIndex = prev.findIndex(chat => chat.id === data.chatId);
+                
+                if (chatIndex === -1) {
+                    loadActiveChats();
+                    return prev;
+                }
+                
+                const updatedChat = {
+                    ...prev[chatIndex],
+                    lastMessage: {
+                        id: data.message.id,
+                        content: data.message.content,
+                        sender_id: data.message.sender?.id || data.message.user_id,
+                        status: data.message.status || 'sent',
+                        is_read: data.message.is_read || false,
+                        created_at: data.message.created_at || new Date().toISOString(),
+                        type: data.message.type || 'text',
+                        chat_id: data.chatId,
+                        sender: data.message.sender
+                    },
+                    updated_at: data.message.created_at || new Date().toISOString()
+                };
+                
+                // Mover al principio
+                const newList = prev.filter(chat => chat.id !== data.chatId);
+                return [updatedChat, ...newList];
+            });
         };
-        
-        // Mover al principio
-        const newList = prev.filter(chat => chat.id !== data.chatId);
-        return [updatedChat, ...newList];
-    });
-};
 
         const handleMessageStatusUpdate = (data: {
             messageId: string;
@@ -257,7 +284,62 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
             offNewMessage(updateChatWithNewMessage);
             offMessageSent(updateChatWithNewMessage);
         };
-    }, [isConnected]);
+    }, [isConnected, onLastMessageUpdate, offLastMessageUpdate, onMessageStatusUpdate, offMessageStatusUpdate, onNewMessage, offNewMessage, onMessageSent, offMessageSent, updateChatWithNewMessage, setActiveChats, loadActiveChats]);
+
+    // ============================================
+    // ACTUALIZAR LISTA DE CHATS CUANDO CAMBIA ESTADO ONLINE/OFFLINE
+    // ============================================
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleUserOnline = (data: any) => {
+            console.log('🟢 Usuario online recibido:', data);
+            refreshStatus();
+        };
+
+        const handleUserOffline = (data: any) => {
+            console.log('🔴 Usuario offline recibido:', data);
+            refreshStatus();
+        };
+
+        const handleReconnected = (data: any) => {
+            console.log('🔄 Evento de reconexión recibido:', data);
+            // Forzar actualización inmediata
+            loadFriends();
+            loadActiveChats();
+        };
+
+        // Usar los métodos del hook useSocket
+        onUserOnline(handleUserOnline);
+        onUserOffline(handleUserOffline);
+        onReconnected(handleReconnected);
+
+        return () => {
+            offUserOnline(handleUserOnline);
+            offUserOffline(handleUserOffline);
+            offReconnected(handleReconnected);
+        };
+    }, [socket, onUserOnline, offUserOnline, onUserOffline, offUserOffline, onReconnected, offReconnected, refreshStatus, loadFriends, loadActiveChats]);
+
+    // ============================================
+    // MANEJAR LISTA DE USUARIOS ONLINE
+    // ============================================
+    useEffect(() => {
+        if (!socket) return;
+
+        const handleOnlineUsersList = (data: { users: any[], timestamp: string }) => {
+            console.log('📋 Lista de usuarios online recibida en Sidebar:', data);
+        
+            loadFriends();
+            loadActiveChats();
+        };
+
+        onOnlineUsersList(handleOnlineUsersList);
+
+        return () => {
+            offOnlineUsersList(handleOnlineUsersList);
+        };
+    }, [socket, onOnlineUsersList, offOnlineUsersList, loadFriends, loadActiveChats]);
 
     // ============================================
     // ESCUCHAR UNREAD-UPDATE
@@ -294,6 +376,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                 return newMap;
             });
 
+            // Limpiar después de 3 segundos
             setTimeout(() => {
                 setTypingUsers(prev => {
                     const newMap = new Map(prev);
@@ -311,6 +394,21 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
             socket.off('user-typing', handleUserTyping);
         };
     }, [socket]);
+
+    // ============================================
+    // ACTUALIZACIÓN PERIÓDICA DE ESTADOS (FALLBACK)
+    // ============================================
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (isConnected) {
+                console.log('🔄 Actualización periódica de estados');
+                loadFriends();
+                loadActiveChats();
+            }
+        }, 10000);
+
+        return () => clearInterval(interval);
+    }, [isConnected, loadFriends, loadActiveChats]);
 
     // ============================================
     // CARGAR NO LEÍDOS (INICIAL)
@@ -370,6 +468,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     }, [friends]);
 
     // ============================================
+    // LIMPIAR TIMEOUTS AL DESMONTAR
+    // ============================================
+    useEffect(() => {
+        return () => {
+            if (statusUpdateTimeoutRef.current) {
+                clearTimeout(statusUpdateTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    // ============================================
     // BUSCAR CHAT PRIVADO EXISTENTE
     // ============================================
     const findExistingPrivateChat = useCallback((friendId: string) => {
@@ -425,6 +534,11 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                 displayName = customNames.get(otherUser.id) || otherUser.User?.username || otherUser.username || 'Usuario';
                 avatarUrl = otherUser.User?.avatar_url || otherUser.avatar_url || null;
                 avatar = displayName.charAt(0).toUpperCase();
+                isOnline = isActuallyOnline(
+                    otherUser.User?.status,
+                    otherUser.User?.last_seen || null
+                );
+                lastSeen = otherUser.User?.last_seen || null;
             }
         }
 
@@ -453,7 +567,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
             const friendData = friends.find(f => f.friend?.id === friendId || f.user_id === friendId);
             if (friendData?.friend) {
                 isOnline = isActuallyOnline(friendData.friend.status, friendData.friend.last_seen || null);
-                lastSeen = friendData.friend.last_seen || null;
+                lastSeen = friendData.friend.last_seen || lastSeen;
             }
         }
 

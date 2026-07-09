@@ -65,12 +65,15 @@ const ChatItem: React.FC<ChatItemProps> = ({
         onSelectChat(chat.id, displayName, avatarUrl || null, isOnline, lastSeen);
     };
 
-
-    // funciones de palomitas en lista de chats
+    // ============================================
+    // PALOMITAS SVG
+    // ============================================
     const renderMessageStatusIcon = () => {
         if (!chat.lastMessage || chat.lastMessage.sender?.id !== user?.id) return null;
         const isRead = chat.lastMessage.is_read === true;
         const s = chat.lastMessage.status;
+
+        // Leído - doble check verde
         if (isRead || s === 'read') return (
             <span className="relative flex items-center">
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
@@ -79,6 +82,7 @@ const ChatItem: React.FC<ChatItemProps> = ({
                 </svg>
             </span>
         );
+        // Entregado - doble check gris
         if (s === 'delivered') return (
             <span className="relative flex items-center">
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
@@ -87,14 +91,16 @@ const ChatItem: React.FC<ChatItemProps> = ({
                 </svg>
             </span>
         );
+        // Enviado - un check gris
         if (s === 'sent') return (
-            <span className="relative flex items-center">
+          <span className="relative flex items-center">
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
                     <path d="M5 13l4 4L19 7" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                     <path d="M5 13l4 4L19 7" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" transform="translate(3, 0)"/>
                 </svg>
             </span>
         );
+        // Pendiente - spinner
         if (s === 'pending' || chat.lastMessage.pending) return (
             <svg className="w-3 h-3 text-gray-400 animate-spin" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round"/>
@@ -103,7 +109,9 @@ const ChatItem: React.FC<ChatItemProps> = ({
         return null;
     };
 
-    //formato de tiempo de mensaje en chat
+    // ============================================
+    // TIEMPO RELATIVO
+    // ============================================
     const formatRelativeTime = (d: string) => {
         const diff = (Date.now() - new Date(d).getTime()) / 60000;
         if (diff < 1) return 'Ahora';
@@ -113,6 +121,9 @@ const ChatItem: React.FC<ChatItemProps> = ({
         return new Date(d).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
     };
 
+    // ============================================
+    // INDICADOR DE "ESCRIBIENDO..."
+    // ============================================
     const renderTypingIndicator = () => {
         if (!typingUsers?.has(chat.id)) return null;
         return (
@@ -127,6 +138,9 @@ const ChatItem: React.FC<ChatItemProps> = ({
         );
     };
 
+    // ============================================
+    // AVATAR
+    // ============================================
     const renderAvatar = () => {
         const isImg = avatar?.startsWith('http');
         if (isImg && !imageError) return (
@@ -163,9 +177,7 @@ const ChatItem: React.FC<ChatItemProps> = ({
                 ? 'bg-gradient-to-r from-blue-50 via-blue-50/50 to-transparent dark:from-blue-900/20 dark:via-blue-900/10 dark:to-transparent' 
                 : 'hover:bg-gray-50/80 dark:hover:bg-gray-800/50'
         }`}>
-            {isSelected && (
-                <div className="absolute left-0 top-2 bottom-2 w-1 bg-blue-500 rounded-r-full shadow-lg shadow-blue-500/50"></div>
-            )}
+            {isSelected && <div className="absolute left-0 top-2 bottom-2 w-1 bg-blue-500 rounded-r-full shadow-lg shadow-blue-500/50"></div>}
 
             <div
                 onMouseDown={() => setIsPressed(true)}
@@ -189,9 +201,7 @@ const ChatItem: React.FC<ChatItemProps> = ({
                             isSelected ? 'text-blue-600 dark:text-blue-400' 
                             : unreadCount > 0 ? 'text-gray-900 dark:text-white' 
                             : 'text-gray-700 dark:text-gray-300'
-                        }`}>
-                            {displayName}
-                        </h3>
+                        }`}>{displayName}</h3>
                     </div>
 
                     {typingUsers?.has(chat.id) ? renderTypingIndicator() : chat.lastMessage ? (
@@ -200,9 +210,7 @@ const ChatItem: React.FC<ChatItemProps> = ({
                             <p className={`text-[13px] truncate leading-relaxed ${
                                 unreadCount > 0 ? 'text-gray-800 dark:text-gray-200 font-semibold' : 'text-gray-400 dark:text-gray-500'
                             }`}>
-                                {chat.lastMessage.sender?.id === user?.id && (
-                                    <span className="text-gray-400 dark:text-gray-500 font-medium">Tú: </span>
-                                )}
+                                {chat.lastMessage.sender?.id === user?.id && <span className="text-gray-400 dark:text-gray-500 font-medium">Tú: </span>}
                                 {chat.lastMessage.content}
                             </p>
                         </div>
@@ -216,51 +224,33 @@ const ChatItem: React.FC<ChatItemProps> = ({
                 <button
                     onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
                     className={`p-1.5 rounded-xl transition-all duration-200 ${
-                        showMenu 
-                            ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' 
-                            : 'text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 opacity-0 group-hover:opacity-100'
-                    }`}
-                    title="Opciones"
-                >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                        <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
-                    </svg>
+                        showMenu ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' 
+                        : 'text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 opacity-0 group-hover:opacity-100'
+                    }`} title="Opciones">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
                 </button>
 
                 {chat.lastMessage && (
-                    <span className={`text-[10px] font-medium whitespace-nowrap ${
-                        unreadCount > 0 ? 'text-blue-500 dark:text-blue-400 font-semibold' : 'text-gray-400 dark:text-gray-500'
-                    }`}>
+                    <span className={`text-[10px] font-medium whitespace-nowrap ${unreadCount > 0 ? 'text-blue-500 dark:text-blue-400 font-semibold' : 'text-gray-400 dark:text-gray-500'}`}>
                         {formatRelativeTime(chat.lastMessage.created_at)}
                     </span>
                 )}
 
                 {showMenu && (
                     <div className="absolute right-0 top-full mt-1 w-52 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700/50 py-2 z-50 overflow-hidden animate-in">
-                        <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700/50">
-                            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Opciones</p>
-                        </div>
+                        <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700/50"><p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Opciones</p></div>
                         {showArchiveButton ? (
                             <>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setShowMenu(false); onArchiveChat(chat.id); }}
-                                    className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-3 transition font-medium"
-                                >
-                                    Archivar chat
+                                <button onClick={(e) => { e.stopPropagation(); setShowMenu(false); onArchiveChat(chat.id); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-3 transition font-medium">
+                                    <span className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center">📦</span>Archivar chat
                                 </button>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setShowMenu(false); onDeleteChat(chat.id, displayName); }}
-                                    className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition font-medium border-t border-gray-100 dark:border-gray-700/50"
-                                >
-                                    Eliminar chat
+                                <button onClick={(e) => { e.stopPropagation(); setShowMenu(false); onDeleteChat(chat.id, displayName); }} className="w-full text-left px-4 py-3 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition font-medium border-t border-gray-100 dark:border-gray-700/50">
+                                    <span className="w-8 h-8 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center">🗑️</span>Eliminar chat
                                 </button>
                             </>
                         ) : (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setShowMenu(false); onUnarchiveChat(chat.id); }}
-                                className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-3 transition font-medium"
-                            >
-                                Desarchivar chat
+                            <button onClick={(e) => { e.stopPropagation(); setShowMenu(false); onUnarchiveChat(chat.id); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-3 transition font-medium">
+                                <span className="w-8 h-8 rounded-xl bg-gray-100 dark:bg-gray-700 flex items-center justify-center">📂</span>Desarchivar chat
                             </button>
                         )}
                     </div>

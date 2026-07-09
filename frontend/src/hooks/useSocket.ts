@@ -59,6 +59,15 @@ interface UseSocketReturn {
 
     // CONFIRMAR ENTREGA (PALOMITAS)
     confirmMessageDelivered: (messageId: string) => void;
+
+    // Evento de reconexión
+    onReconnected: (callback: (data: any) => void) => void;
+    offReconnected: (callback?: (data: any) => void) => void;
+
+    //  Lista de usuarios online
+    onOnlineUsersList: (callback: (data: any) => void) => void;
+    offOnlineUsersList: (callback?: (data: any) => void) => void;
+    getConnectedUsers: () => void;
 }
 
 export const useSocket = (): UseSocketReturn => {
@@ -66,6 +75,8 @@ export const useSocket = (): UseSocketReturn => {
     const [socket, setSocket] = useState<Socket | null>(null);  
     const socketRef = useRef<Socket | null>(null);
     const { user } = useAuth();
+    const isSettingUserRef = useRef(false);
+    const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     
     // Callbacks existentes
     const newMessageCallbacks = useRef<Set<(data: any) => void>>(new Set());
@@ -94,34 +105,100 @@ export const useSocket = (): UseSocketReturn => {
     const unreadCountResponseCallbacks = useRef<Set<(data: any) => void>>(new Set());
     const totalUnreadResponseCallbacks = useRef<Set<(data: any) => void>>(new Set());
 
+    //  Callbacks de reconexión
+    const reconnectedCallbacks = useRef<Set<(data: any) => void>>(new Set());
+
+    // Callbacks de lista de usuarios online
+    const onlineUsersListCallbacks = useRef<Set<(data: any) => void>>(new Set());
+
+    // Función para configurar el usuario
+    const setupUser = useCallback((newSocket: Socket, userId: string) => {
+        if (isSettingUserRef.current) return;
+        isSettingUserRef.current = true;
+        
+        console.log(`🔧 Configurando usuario ${userId} en socket`);
+        newSocket.emit('set-user', userId);
+        
+        // Limpiar después de 1 segundo
+        setTimeout(() => {
+            isSettingUserRef.current = false;
+        }, 1000);
+    }, []);
+
     useEffect(() => {
         const socketUrl = import.meta.env.VITE_WS_URL || 'http://localhost:3000';
         
+        console.log('🔄 Inicializando Socket.IO...');
         const newSocket = io(socketUrl, {
             withCredentials: true,
             transports: ['websocket'],
             reconnection: true,
-            reconnectionAttempts: 5,
+            reconnectionAttempts: 10,
             reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
         });
 
         socketRef.current = newSocket;
         setSocket(newSocket);
 
+        // ==========================================
+        // EVENTOS DE CONEXIÓN
+        // ==========================================
         newSocket.on('connect', () => {
+            console.log('✅ Socket conectado');
             setIsConnected(true);
+            
             if (user?.id) {
-                newSocket.emit('set-user', user.id);
+                if (reconnectTimeoutRef.current) {
+                    clearTimeout(reconnectTimeoutRef.current);
+                    reconnectTimeoutRef.current = null;
+                }
+                setupUser(newSocket, user.id);
             }
         });
 
-        newSocket.on('disconnect', () => {
+        newSocket.on('reconnect', (attemptNumber) => {
+            console.log(`🔄 Socket reconectado después de ${attemptNumber} intentos`);
+            setIsConnected(true);
+            
+            if (user?.id) {
+                reconnectTimeoutRef.current = setTimeout(() => {
+                    console.log('🔄 Enviando set-user después de reconexión');
+                    setupUser(newSocket, user.id);
+                    reconnectTimeoutRef.current = null;
+                }, 500);
+            }
+        });
+
+        newSocket.on('disconnect', (reason) => {
+            console.log(`❌ Socket desconectado: ${reason}`);
             setIsConnected(false);
         });
 
         newSocket.on('connect_error', (error) => {
-            console.error('Error de conexión Socket:', error);
+            console.error('❌ Error de conexión Socket:', error.message);
             setIsConnected(false);
+        });
+
+        newSocket.on('reconnect_failed', () => {
+            console.error('❌ Falló la reconexión del socket');
+            setIsConnected(false);
+        });
+
+        // ==========================================
+        // EVENTO DE RECONEXIÓN CONFIRMADA 
+        // ==========================================
+        newSocket.on('reconnected', (data) => {
+            console.log('🔄 Reconexión confirmada por el servidor:', data);
+            reconnectedCallbacks.current.forEach(cb => cb(data));
+        });
+
+        // ==========================================
+        // NUEVO: LISTA DE USUARIOS ONLINE
+        // ==========================================
+        newSocket.on('online-users-list', (data) => {
+            console.log('📋 Lista de usuarios online recibida:', data);
+            onlineUsersListCallbacks.current.forEach(cb => cb(data));
         });
 
         // ==========================================
@@ -139,10 +216,12 @@ export const useSocket = (): UseSocketReturn => {
         // EVENTOS DE ONLINE/OFFLINE
         // ==========================================
         newSocket.on('user-online', (data) => {
+            console.log('🟢 Usuario online:', data);
             userOnlineCallbacks.current.forEach(cb => cb(data));
         });
 
         newSocket.on('user-offline', (data) => {
+            console.log('🔴 Usuario offline:', data);
             userOfflineCallbacks.current.forEach(cb => cb(data));
         });
 
@@ -190,9 +269,20 @@ export const useSocket = (): UseSocketReturn => {
 
         // CLEANUP
         return () => {
+            console.log('🧹 Limpiando Socket...');
+            
+            if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+                reconnectTimeoutRef.current = null;
+            }
+            
             newSocket.off('connect');
+            newSocket.off('reconnect');
             newSocket.off('disconnect');
             newSocket.off('connect_error');
+            newSocket.off('reconnect_failed');
+            newSocket.off('reconnected');
+            newSocket.off('online-users-list');
             newSocket.off('last-message-updated');
             newSocket.off('message-status-updated');
             newSocket.off('user-online');
@@ -222,6 +312,8 @@ export const useSocket = (): UseSocketReturn => {
             unreadUpdateCallbacks.current.clear();
             unreadCountResponseCallbacks.current.clear();
             totalUnreadResponseCallbacks.current.clear();
+            reconnectedCallbacks.current.clear();
+            onlineUsersListCallbacks.current.clear();
             
             newSocket.disconnect();
             socketRef.current = null;
@@ -504,9 +596,12 @@ export const useSocket = (): UseSocketReturn => {
 
     const setUser = useCallback((userId: string) => {
         if (socketRef.current && isConnected) {
-            socketRef.current.emit('set-user', userId);
+            console.log(`👤 Estableciendo usuario: ${userId}`);
+            setupUser(socketRef.current, userId);
+        } else {
+            console.warn('⚠️ No se puede establecer usuario: socket no conectado');
         }
-    }, [isConnected]);
+    }, [isConnected, setupUser]);
 
     const markAsRead = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
@@ -523,6 +618,48 @@ export const useSocket = (): UseSocketReturn => {
     const getTotalUnread = useCallback(() => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('get-total-unread');
+        }
+    }, [isConnected]);
+
+    //  Funciones para el evento de reconexión
+    const onReconnected = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        reconnectedCallbacks.current.add(callback);
+        socketRef.current.on('reconnected', callback);
+    }, []);
+
+    const offReconnected = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            reconnectedCallbacks.current.delete(callback);
+            socketRef.current.off('reconnected', callback);
+        } else {
+            reconnectedCallbacks.current.forEach(cb => socketRef.current?.off('reconnected', cb));
+            reconnectedCallbacks.current.clear();
+        }
+    }, []);
+
+    //  Funciones para la lista de usuarios online
+    const onOnlineUsersList = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        onlineUsersListCallbacks.current.add(callback);
+        socketRef.current.on('online-users-list', callback);
+    }, []);
+
+    const offOnlineUsersList = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            onlineUsersListCallbacks.current.delete(callback);
+            socketRef.current.off('online-users-list', callback);
+        } else {
+            onlineUsersListCallbacks.current.forEach(cb => socketRef.current?.off('online-users-list', cb));
+            onlineUsersListCallbacks.current.clear();
+        }
+    }, []);
+
+    const getConnectedUsers = useCallback(() => {
+        if (socketRef.current && isConnected) {
+            socketRef.current.emit('get-connected-users');
         }
     }, [isConnected]);
 
@@ -565,6 +702,12 @@ export const useSocket = (): UseSocketReturn => {
         offUserBlocked,
         onFriendStatusChanged,
         offFriendStatusChanged,
-        confirmMessageDelivered
+        confirmMessageDelivered,
+        // eventos de reconexión
+        onReconnected,
+        offReconnected,
+        onOnlineUsersList,
+        offOnlineUsersList,
+        getConnectedUsers,
     };
 };
