@@ -82,6 +82,15 @@ const ChatLayout: React.FC = () => {
         }
     };
 
+     // FUNCIÓN PARA CERRAR EL CHAT
+    const handleCloseChat = useCallback(() => {
+        setSelectedChatId(null);
+        setSelectedChatName('');
+        setSelectedChatAvatar(null);
+        setSelectedChatStatus(false);
+        setSelectedChatLastSeen(null);
+    }, []);
+
     // ==========================================
     // EFECTO: Animación de partículas
     // ==========================================
@@ -231,6 +240,7 @@ const ChatLayout: React.FC = () => {
                         chatAvatar={selectedChatAvatar ?? undefined}
                         isOnline={selectedChatStatus}
                         lastSeen={selectedChatLastSeen}
+                        onClose={handleCloseChat}
                     />
                 </ChatBackgroundProvider>
             </div>

@@ -135,6 +135,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+
+    
+
     // ============================================
     // Cerrar menú de mensaje al hacer clic fuera
     // ============================================

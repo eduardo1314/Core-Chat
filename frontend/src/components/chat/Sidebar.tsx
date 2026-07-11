@@ -10,6 +10,7 @@ import { formatLastSeen } from '../../../utils/formatLastSeen';
 import { Chat } from "../../types";
 import { useSocket } from '../../hooks/useSocket';
 import ChatItem from './ChatItem';
+import Stories from './stories';
 
 // ============================================
 // TIPOS E INTERFACES
@@ -91,7 +92,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     const [searchResult, setSearchResult] = useState<any>(null);
     const [searching, setSearching] = useState(false);
     const [searchError, setSearchError] = useState('');
-    const [activeTab, setActiveTab] = useState<'chats' | 'friends' | 'requests' | 'archived'>('chats');
+    const [activeTab, setActiveTab] = useState<'chats' | 'friends' | 'requests' | 'archived' | 'stories'>('chats');
     const [isCreatingChat, setIsCreatingChat] = useState(false);
     const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set());
     const [customNames, setCustomNames] = useState<Map<string, string>>(new Map());
@@ -119,12 +120,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     // FUNCIÓN PARA ACTUALIZAR ESTADOS (CON DEBOUNCE)
     // ============================================
     const refreshStatus = useCallback(() => {
-        // Limpiar timeout anterior
         if (statusUpdateTimeoutRef.current) {
             clearTimeout(statusUpdateTimeoutRef.current);
         }
 
-        // Debounce para evitar múltiples actualizaciones
         statusUpdateTimeoutRef.current = setTimeout(() => {
             console.log('🔄 Actualizando estados de amigos y chats...');
             loadFriends();
@@ -203,7 +202,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                 updated_at: data.created_at || new Date().toISOString()
             };
             
-            // Mover al principio
             const newList = prev.filter(chat => chat.id !== chatId);
             return [updatedChat, ...newList];
         });
@@ -240,7 +238,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                     updated_at: data.message.created_at || new Date().toISOString()
                 };
                 
-                // Mover al principio
                 const newList = prev.filter(chat => chat.id !== data.chatId);
                 return [updatedChat, ...newList];
             });
@@ -304,12 +301,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
 
         const handleReconnected = (data: any) => {
             console.log('🔄 Evento de reconexión recibido:', data);
-            // Forzar actualización inmediata
             loadFriends();
             loadActiveChats();
         };
 
-        // Usar los métodos del hook useSocket
         onUserOnline(handleUserOnline);
         onUserOffline(handleUserOffline);
         onReconnected(handleReconnected);
@@ -329,7 +324,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
 
         const handleOnlineUsersList = (data: { users: any[], timestamp: string }) => {
             console.log('📋 Lista de usuarios online recibida en Sidebar:', data);
-        
             loadFriends();
             loadActiveChats();
         };
@@ -376,7 +370,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                 return newMap;
             });
 
-            // Limpiar después de 3 segundos
             setTimeout(() => {
                 setTypingUsers(prev => {
                     const newMap = new Map(prev);
@@ -787,7 +780,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     // ============================================
     if (friendsLoading) {
         return (
-            <div className="w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
+            <div className="w-200  bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-gray-500">Cargando...</div>
                 </div>
@@ -796,15 +789,16 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
     }
 
     return (
-        <div className="w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
+        <div className="w-200  bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col h-full">
             {/* HEADER */}
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex gap-2 mb-2">
                     {[
                         { id: 'chats', label: ' Chats', badge: totalUnread },
-                        { id: 'friends', label: ' Amigos' },
-                        { id: 'requests', label: ' Solicitudes', badge: pendingRequests.length },
-                        { id: 'archived', label: ' Archivados' }
+                        { id: 'stories', label: 'Historias' },
+                        { id: 'friends', label: 'Amigos' },
+                        { id: 'requests', label: 'Solicitudes', badge: pendingRequests.length },
+                        { id: 'archived', label: 'Archivados' }
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -812,16 +806,16 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                                 setActiveTab(tab.id as any);
                                 if (tab.id === 'requests') loadPendingRequests();
                             }}
-                            className={`flex-1 py-2 font-medium rounded-lg transition relative flex items-center justify-center ${
+                            className={`flex-1 py-1.5 px-1 text-xs font-medium rounded-lg transition relative flex items-center justify-center ${
                                 activeTab === tab.id
-                                    ? 'bg-blue-500 text-white'
-                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                                    ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
                             }`}
                         >
-                            <span className="flex items-center justify-center gap-1">
+                            <span className="flex items-center justify-center gap-1 whitespace-nowrap">
                                 {tab.label}
                                 {tab.badge ? (
-                                    <span className="ml-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center px-1.5 animate-pulse">
+                                    <span className="ml-0.5 min-w-[16px] h-[16px] bg-red-500 text-white text-[9px] rounded-full flex items-center justify-center px-1 font-bold animate-pulse">
                                         {tab.badge > 9 ? '9+' : tab.badge}
                                     </span>
                                 ) : null}
@@ -837,7 +831,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                         setSearchError('');
                         setFriendEmail('');
                     }}
-                    className="w-full mt-2 py-2.5 text-sm font-medium bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-300 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                    className="w-full mt-2 py-2 text-xs font-medium bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-300 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
                 >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -846,48 +840,48 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                 </button>
 
                 {showAddFriend && (
-                    <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3"> Busca por email</p>
+                    <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">🔍 Busca por email</p>
                         <form onSubmit={handleSearchUser} className="flex gap-2">
                             <input
                                 type="email"
                                 placeholder="ejemplo@correo.com"
                                 value={friendEmail}
                                 onChange={e => setFriendEmail(e.target.value)}
-                                className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="flex-1 px-3 py-1.5 text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 autoFocus
                             />
                             <button
                                 type="submit"
                                 disabled={searching}
-                                className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
+                                className="px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition disabled:opacity-50"
                             >
                                 {searching ? '...' : 'Buscar'}
                             </button>
                         </form>
 
-                        {searching && <div className="mt-3 text-center text-gray-500 text-sm">Buscando usuario...</div>}
-                        {searchError && <div className="mt-3 p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-sm rounded-lg text-center">{searchError}</div>}
+                        {searching && <div className="mt-2 text-center text-gray-500 text-xs">Buscando usuario...</div>}
+                        {searchError && <div className="mt-2 p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs rounded-lg text-center">{searchError}</div>}
 
                         {searchResult && (
-                            <div className="mt-3 p-3 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 shadow-sm">
+                            <div className="mt-2 p-2 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 shadow-sm">
                                 <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md flex-shrink-0">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md flex-shrink-0">
                                             {searchResult.username?.charAt(0).toUpperCase() || '?'}
                                         </div>
                                         <div>
-                                            <p className="font-semibold text-gray-800 dark:text-white">{searchResult.username}</p>
+                                            <p className="font-semibold text-sm text-gray-800 dark:text-white">{searchResult.username}</p>
                                             <p className="text-xs text-gray-500 dark:text-gray-400">{searchResult.email}</p>
-                                            <div className="flex items-center gap-1 mt-1">
-                                                <span className={`w-2 h-2 rounded-full ${searchResult.status === 'online' ? 'bg-green-500' : 'bg-gray-400'}`}></span>
+                                            <div className="flex items-center gap-1 mt-0.5">
+                                                <span className={`w-1.5 h-1.5 rounded-full ${searchResult.status === 'online' ? 'bg-green-500' : 'bg-gray-400'}`}></span>
                                                 <span className="text-xs text-gray-400">{searchResult.status === 'online' ? 'En línea' : 'Offline'}</span>
                                             </div>
                                         </div>
                                     </div>
                                     <button
                                         onClick={() => handleSendFriendRequest(searchResult.id)}
-                                        className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-sm font-medium rounded-lg hover:from-green-600 hover:to-emerald-700 transition shadow-md flex-shrink-0"
+                                        className="px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-xs font-medium rounded-lg hover:from-green-600 hover:to-emerald-700 transition shadow-md flex-shrink-0"
                                     >
                                         Agregar
                                     </button>
@@ -902,6 +896,30 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
             <div className="flex-1 overflow-y-auto">
                 {activeTab === 'chats' && renderChatList(activeChats, true)}
                 {activeTab === 'archived' && renderChatList(archivedChats, false)}
+
+                {/* SECCIÓN DE HISTORIAS */}
+                {activeTab === 'stories' && (
+                    <div className="p-4">
+                        <Stories 
+                            currentUserId={user?.id}
+                            onStoryClick={(storyId: any) => {
+                                console.log('📖 Historia clickeada:', storyId);
+                            }}
+                            onViewStory={(storyId: any) => {
+                                console.log('👁️ Historia vista:', storyId);
+                            }}
+                            onLikeStory={(storyId: any) => {
+                                console.log('❤️ Like en historia:', storyId);
+                            }}
+                            onSendMessage={(storyId: any) => {
+                                console.log('💬 Mensaje en historia:', storyId);
+                            }}
+                            onAddStory={() => {
+                                console.log('➕ Agregar nueva historia');
+                            }}
+                        />
+                    </div>
+                )}
 
                 {activeTab === 'friends' && (
                     <div className="divide-y divide-gray-100 dark:divide-gray-800">
