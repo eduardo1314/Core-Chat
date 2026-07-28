@@ -2,6 +2,9 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './useAuth';
 
+/**
+ * Interfaz que define todos los métodos y eventos disponibles del socket
+ */
 interface UseSocketReturn {
     socket: Socket | null;
     isConnected: boolean;
@@ -64,12 +67,30 @@ interface UseSocketReturn {
     onReconnected: (callback: (data: any) => void) => void;
     offReconnected: (callback?: (data: any) => void) => void;
 
-    //  Lista de usuarios online
+    // Lista de usuarios online
     onOnlineUsersList: (callback: (data: any) => void) => void;
     offOnlineUsersList: (callback?: (data: any) => void) => void;
     getConnectedUsers: () => void;
+
+    // ============================================
+    // EVENTOS PARA HISTORIAS
+    // ============================================
+    onNewStory: (callback: (data: any) => void) => void;
+    offNewStory: (callback?: (data: any) => void) => void;
+    onStoryDeleted: (callback: (data: any) => void) => void;
+    offStoryDeleted: (callback?: (data: any) => void) => void;
+    onStoryLikeUpdated: (callback: (data: any) => void) => void;
+    offStoryLikeUpdated: (callback?: (data: any) => void) => void;
+    onStoryViewed: (callback: (data: any) => void) => void;
+    offStoryViewed: (callback?: (data: any) => void) => void;
+    onStoryExpired: (callback: (data: any) => void) => void;
+    offStoryExpired: (callback?: (data: any) => void) => void;
 }
 
+/**
+ * Hook personalizado para gestionar la conexión Socket.IO
+ * Proporciona todos los eventos y métodos para comunicación en tiempo real
+ */
 export const useSocket = (): UseSocketReturn => {
     const [isConnected, setIsConnected] = useState(false);
     const [socket, setSocket] = useState<Socket | null>(null);  
@@ -105,13 +126,24 @@ export const useSocket = (): UseSocketReturn => {
     const unreadCountResponseCallbacks = useRef<Set<(data: any) => void>>(new Set());
     const totalUnreadResponseCallbacks = useRef<Set<(data: any) => void>>(new Set());
 
-    //  Callbacks de reconexión
+    // Callbacks de reconexión
     const reconnectedCallbacks = useRef<Set<(data: any) => void>>(new Set());
 
     // Callbacks de lista de usuarios online
     const onlineUsersListCallbacks = useRef<Set<(data: any) => void>>(new Set());
 
-    // Función para configurar el usuario
+    // ============================================
+    //  CALLBACKS PARA HISTORIAS 
+    // ============================================
+    const newStoryCallbacks = useRef<Set<(data: any) => void>>(new Set());
+    const storyDeletedCallbacks = useRef<Set<(data: any) => void>>(new Set());
+    const storyLikeUpdatedCallbacks = useRef<Set<(data: any) => void>>(new Set());
+    const storyViewedCallbacks = useRef<Set<(data: any) => void>>(new Set());
+    const storyExpiredCallbacks = useRef<Set<(data: any) => void>>(new Set());
+
+    /**
+     * Configura el usuario en el socket para identificarlo
+     */
     const setupUser = useCallback((newSocket: Socket, userId: string) => {
         if (isSettingUserRef.current) return;
         isSettingUserRef.current = true;
@@ -194,7 +226,7 @@ export const useSocket = (): UseSocketReturn => {
         });
 
         // ==========================================
-        // NUEVO: LISTA DE USUARIOS ONLINE
+        //  LISTA DE USUARIOS ONLINE
         // ==========================================
         newSocket.on('online-users-list', (data) => {
             console.log('📋 Lista de usuarios online recibida:', data);
@@ -267,6 +299,34 @@ export const useSocket = (): UseSocketReturn => {
             totalUnreadResponseCallbacks.current.forEach(cb => cb(data));
         });
 
+        // ==========================================
+        //EVENTOS PARA HISTORIAS 
+        // ==========================================
+        newSocket.on('new-story', (data) => {
+            console.log('📸 Nueva historia recibida:', data);
+            newStoryCallbacks.current.forEach(cb => cb(data));
+        });
+
+        newSocket.on('story-deleted', (data) => {
+            console.log('🗑️ Historia eliminada recibida:', data);
+            storyDeletedCallbacks.current.forEach(cb => cb(data));
+        });
+
+        newSocket.on('story-like-updated', (data) => {
+            console.log('❤️ Like de historia actualizado:', data);
+            storyLikeUpdatedCallbacks.current.forEach(cb => cb(data));
+        });
+
+        newSocket.on('story-viewed-by', (data) => {
+            console.log('👁️ Historia vista por:', data);
+            storyViewedCallbacks.current.forEach(cb => cb(data));
+        });
+
+        newSocket.on('story-expired', (data) => {
+            console.log('⏰ Historia expirada:', data);
+            storyExpiredCallbacks.current.forEach(cb => cb(data));
+        });
+
         // CLEANUP
         return () => {
             console.log('🧹 Limpiando Socket...');
@@ -297,6 +357,13 @@ export const useSocket = (): UseSocketReturn => {
             newSocket.off('unread-count-response');
             newSocket.off('total-unread-response');
             
+            // Limpiar eventos de historias
+            newSocket.off('new-story');
+            newSocket.off('story-deleted');
+            newSocket.off('story-like-updated');
+            newSocket.off('story-viewed-by');
+            newSocket.off('story-expired');
+            
             newMessageCallbacks.current.clear();
             messageSentCallbacks.current.clear();
             lastMessageUpdateCallbacks.current.clear();
@@ -315,6 +382,13 @@ export const useSocket = (): UseSocketReturn => {
             reconnectedCallbacks.current.clear();
             onlineUsersListCallbacks.current.clear();
             
+            // Limpiar callbacks de historias
+            newStoryCallbacks.current.clear();
+            storyDeletedCallbacks.current.clear();
+            storyLikeUpdatedCallbacks.current.clear();
+            storyViewedCallbacks.current.clear();
+            storyExpiredCallbacks.current.clear();
+            
             newSocket.disconnect();
             socketRef.current = null;
             setSocket(null);
@@ -325,18 +399,27 @@ export const useSocket = (): UseSocketReturn => {
     // FUNCIONES
     // ============================================
     
+    /**
+     * Unirse a una sala de chat
+     */
     const joinChat = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('join-chat', chatId);
         }
     }, [isConnected]);
 
+    /**
+     * Salir de una sala de chat
+     */
     const leaveChat = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('leave-chat', chatId);
         }
     }, [isConnected]);
 
+    /**
+     * Enviar un mensaje a un chat
+     */
     const sendMessage = useCallback((chatId: string, content: string, userId: string, username: string, tempId?: string) => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('send-message', {
@@ -349,6 +432,9 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, [isConnected]);
 
+    /**
+     * Confirmar que un mensaje ha sido entregado
+     */
     const confirmMessageDelivered = useCallback((messageId: string) => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('message-delivered', { messageId });
@@ -358,12 +444,19 @@ export const useSocket = (): UseSocketReturn => {
     // ============================================
     //    ACTUALIZACIÓN DE CHATS EN TIEMPO REAL
     // ============================================
+    
+    /**
+     * Suscribirse a actualizaciones del último mensaje
+     */
     const onLastMessageUpdate = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         lastMessageUpdateCallbacks.current.add(callback);
         socketRef.current.on('last-message-updated', callback);
     }, []);
 
+    /**
+     * Desuscribirse de actualizaciones del último mensaje
+     */
     const offLastMessageUpdate = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -375,15 +468,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
-    // ============================================
-    //   FUNCION DE ACTUALIZACIÓN DE CHATS EN TIEMPO REAL
-    // ============================================
+    /**
+     * Suscribirse a actualizaciones de estado de mensajes
+     */
     const onMessageStatusUpdate = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         messageStatusUpdateCallbacks.current.add(callback);
         socketRef.current.on('message-status-updated', callback);
     }, []);
 
+    /**
+     * Desuscribirse de actualizaciones de estado de mensajes
+     */
     const offMessageStatusUpdate = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -395,12 +491,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Suscribirse a nuevos mensajes
+     */
     const onNewMessage = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         newMessageCallbacks.current.add(callback);
         socketRef.current.on('new-message', callback);
     }, []);
 
+    /**
+     * Desuscribirse de nuevos mensajes
+     */
     const offNewMessage = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -412,12 +514,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Suscribirse a eventos de bloqueo de usuario
+     */
     const onUserBlocked = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         userBlockedCallbacks.current.add(callback);
         socketRef.current.on('user-blocked', callback);
     }, []);
 
+    /**
+     * Desuscribirse de eventos de bloqueo de usuario
+     */
     const offUserBlocked = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -429,12 +537,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Suscribirse a cambios de estado de amistad
+     */
     const onFriendStatusChanged = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         friendStatusChangedCallbacks.current.add(callback);
         socketRef.current.on('friend-status-changed', callback);
     }, []);
 
+    /**
+     * Desuscribirse de cambios de estado de amistad
+     */
     const offFriendStatusChanged = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -446,12 +560,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Suscribirse a confirmación de mensaje enviado
+     */
     const onMessageSent = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         messageSentCallbacks.current.add(callback);
         socketRef.current.on('message-sent', callback);
     }, []);
 
+    /**
+     * Desuscribirse de confirmación de mensaje enviado
+     */
     const offMessageSent = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -463,18 +583,27 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Emitir evento de escritura (typing)
+     */
     const emitTyping = useCallback((chatId: string, isTyping: boolean) => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('typing', { chatId, isTyping });
         }
     }, [isConnected]);
 
+    /**
+     * Suscribirse a eventos de usuario online
+     */
     const onUserOnline = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         userOnlineCallbacks.current.add(callback);
         socketRef.current.on('user-online', callback);
     }, []);
 
+    /**
+     * Desuscribirse de eventos de usuario online
+     */
     const offUserOnline = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -486,12 +615,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Suscribirse a eventos de usuario offline
+     */
     const onUserOffline = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         userOfflineCallbacks.current.add(callback);
         socketRef.current.on('user-offline', callback);
     }, []);
 
+    /**
+     * Desuscribirse de eventos de usuario offline
+     */
     const offUserOffline = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -503,12 +638,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Suscribirse a actualizaciones de estado de usuario
+     */
     const onUserStatusUpdated = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         userStatusUpdatedCallbacks.current.add(callback);
         socketRef.current.on('user-status-updated', callback);
     }, []);
 
+    /**
+     * Desuscribirse de actualizaciones de estado de usuario
+     */
     const offUserStatusUpdated = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -520,18 +661,27 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Emitir evento de usuario offline
+     */
     const emitUserOffline = useCallback((userId: string) => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('user-offline', { userId });
         }
     }, [isConnected]);
 
+    /**
+     * Suscribirse a eventos de mensaje eliminado
+     */
     const onMessageDeleted = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         messageDeletedCallbacks.current.add(callback);
         socketRef.current.on('message-deleted', callback);
     }, []);
 
+    /**
+     * Desuscribirse de eventos de mensaje eliminado
+     */
     const offMessageDeleted = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -543,12 +693,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Suscribirse a eventos de mensaje editado
+     */
     const onMessageEdited = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         messageEditedCallbacks.current.add(callback);
         socketRef.current.on('message-edited', callback);
     }, []);
 
+    /**
+     * Desuscribirse de eventos de mensaje editado
+     */
     const offMessageEdited = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -560,12 +716,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Suscribirse a eventos de escritura de usuario
+     */
     const onUserTyping = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         userTypingCallbacks.current.add(callback);
         socketRef.current.on('user-typing', callback);
     }, []);
 
+    /**
+     * Desuscribirse de eventos de escritura de usuario
+     */
     const offUserTyping = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -577,12 +739,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Suscribirse a actualizaciones de no leídos
+     */
     const onUnreadUpdate = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         unreadUpdateCallbacks.current.add(callback);
         socketRef.current.on('unread-update', callback);
     }, []);
 
+    /**
+     * Desuscribirse de actualizaciones de no leídos
+     */
     const offUnreadUpdate = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -594,6 +762,9 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Establecer el usuario actual en el socket
+     */
     const setUser = useCallback((userId: string) => {
         if (socketRef.current && isConnected) {
             console.log(`👤 Estableciendo usuario: ${userId}`);
@@ -603,31 +774,45 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, [isConnected, setupUser]);
 
+    /**
+     * Marcar mensajes como leídos en un chat
+     */
     const markAsRead = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('mark-as-read', { chatId });
         }
     }, [isConnected]);
 
+    /**
+     * Obtener el conteo de no leídos de un chat
+     */
     const getUnreadCount = useCallback((chatId: string) => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('get-unread-count', { chatId });
         }
     }, [isConnected]);
 
+    /**
+     * Obtener el total de no leídos de todos los chats
+     */
     const getTotalUnread = useCallback(() => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('get-total-unread');
         }
     }, [isConnected]);
 
-    //  Funciones para el evento de reconexión
+    /**
+     * Suscribirse al evento de reconexión
+     */
     const onReconnected = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         reconnectedCallbacks.current.add(callback);
         socketRef.current.on('reconnected', callback);
     }, []);
 
+    /**
+     * Desuscribirse del evento de reconexión
+     */
     const offReconnected = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -639,13 +824,18 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
-    //  Funciones para la lista de usuarios online
+    /**
+     * Suscribirse a la lista de usuarios online
+     */
     const onOnlineUsersList = useCallback((callback: (data: any) => void) => {
         if (!socketRef.current) return;
         onlineUsersListCallbacks.current.add(callback);
         socketRef.current.on('online-users-list', callback);
     }, []);
 
+    /**
+     * Desuscribirse de la lista de usuarios online
+     */
     const offOnlineUsersList = useCallback((callback?: (data: any) => void) => {
         if (!socketRef.current) return;
         if (callback) {
@@ -657,11 +847,133 @@ export const useSocket = (): UseSocketReturn => {
         }
     }, []);
 
+    /**
+     * Obtener la lista de usuarios conectados
+     */
     const getConnectedUsers = useCallback(() => {
         if (socketRef.current && isConnected) {
             socketRef.current.emit('get-connected-users');
         }
     }, [isConnected]);
+
+    // ============================================
+    // FUNCIONES PARA HISTORIAS 
+    // ============================================
+    
+    /**
+     * Suscribirse a nuevas historias
+     */
+    const onNewStory = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        newStoryCallbacks.current.add(callback);
+        socketRef.current.on('new-story', callback);
+    }, []);
+
+    /**
+     * Desuscribirse de nuevas historias
+     */
+    const offNewStory = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            newStoryCallbacks.current.delete(callback);
+            socketRef.current.off('new-story', callback);
+        } else {
+            newStoryCallbacks.current.forEach(cb => socketRef.current?.off('new-story', cb));
+            newStoryCallbacks.current.clear();
+        }
+    }, []);
+
+    /**
+     * Suscribirse a historias eliminadas
+     */
+    const onStoryDeleted = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        storyDeletedCallbacks.current.add(callback);
+        socketRef.current.on('story-deleted', callback);
+    }, []);
+
+    /**
+     * Desuscribirse de historias eliminadas
+     */
+    const offStoryDeleted = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            storyDeletedCallbacks.current.delete(callback);
+            socketRef.current.off('story-deleted', callback);
+        } else {
+            storyDeletedCallbacks.current.forEach(cb => socketRef.current?.off('story-deleted', cb));
+            storyDeletedCallbacks.current.clear();
+        }
+    }, []);
+
+    /**
+     * Suscribirse a actualizaciones de likes en historias
+     */
+    const onStoryLikeUpdated = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        storyLikeUpdatedCallbacks.current.add(callback);
+        socketRef.current.on('story-like-updated', callback);
+    }, []);
+
+    /**
+     * Desuscribirse de actualizaciones de likes en historias
+     */
+    const offStoryLikeUpdated = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            storyLikeUpdatedCallbacks.current.delete(callback);
+            socketRef.current.off('story-like-updated', callback);
+        } else {
+            storyLikeUpdatedCallbacks.current.forEach(cb => socketRef.current?.off('story-like-updated', cb));
+            storyLikeUpdatedCallbacks.current.clear();
+        }
+    }, []);
+
+    /**
+     * Suscribirse a eventos de historia vista
+     */
+    const onStoryViewed = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        storyViewedCallbacks.current.add(callback);
+        socketRef.current.on('story-viewed-by', callback);
+    }, []);
+
+    /**
+     * Desuscribirse de eventos de historia vista
+     */
+    const offStoryViewed = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            storyViewedCallbacks.current.delete(callback);
+            socketRef.current.off('story-viewed-by', callback);
+        } else {
+            storyViewedCallbacks.current.forEach(cb => socketRef.current?.off('story-viewed-by', cb));
+            storyViewedCallbacks.current.clear();
+        }
+    }, []);
+
+    /**
+     * Suscribirse a historias expiradas
+     */
+    const onStoryExpired = useCallback((callback: (data: any) => void) => {
+        if (!socketRef.current) return;
+        storyExpiredCallbacks.current.add(callback);
+        socketRef.current.on('story-expired', callback);
+    }, []);
+
+    /**
+     * Desuscribirse de historias expiradas
+     */
+    const offStoryExpired = useCallback((callback?: (data: any) => void) => {
+        if (!socketRef.current) return;
+        if (callback) {
+            storyExpiredCallbacks.current.delete(callback);
+            socketRef.current.off('story-expired', callback);
+        } else {
+            storyExpiredCallbacks.current.forEach(cb => socketRef.current?.off('story-expired', cb));
+            storyExpiredCallbacks.current.clear();
+        }
+    }, []);
 
     return {
         socket,
@@ -709,5 +1021,16 @@ export const useSocket = (): UseSocketReturn => {
         onOnlineUsersList,
         offOnlineUsersList,
         getConnectedUsers,
+        //  EVENTOS PARA HISTORIAS 
+        onNewStory,
+        offNewStory,
+        onStoryDeleted,
+        offStoryDeleted,
+        onStoryLikeUpdated,
+        offStoryLikeUpdated,
+        onStoryViewed,
+        offStoryViewed,
+        onStoryExpired,
+        offStoryExpired,
     };
 };

@@ -7,7 +7,10 @@ import chatRoutes from './routes/chat.routes';
 import messageRoutes from './routes/message.routes';
 import friendRoutes from './routes/friend.routes';
 import userRoutes from './routes/user.routes';
+import storyRoutes from "./routes/story.routes";
 import cloudinaryRoutes from "./routes/cloudinary.routes";
+import musicRoutes from "./routes/music.routes";
+import audioRoutes from './routes/audio.routes';
 import cookieParser from 'cookie-parser';
 
 const app: Express = express();
@@ -53,7 +56,10 @@ app.get('/', (req: Request, res: Response) => {
             chats: `${config.apiPrefix}/chats`,
             messages: `${config.apiPrefix}/messages`,
             friends: `${config.apiPrefix}/friends`,
-            users: `${config.apiPrefix}/users`
+            users: `${config.apiPrefix}/users`,
+            stories: `${config.apiPrefix}/stories`,
+            music: `${config.apiPrefix}/music`,
+            audio: `${config.apiPrefix}/audio`,
         }
     });
 });
@@ -65,6 +71,9 @@ app.use(`${config.apiPrefix}/messages`, messageRoutes);
 app.use(`${config.apiPrefix}/friends`, friendRoutes);
 app.use(`${config.apiPrefix}/users`, userRoutes);
 app.use(`${config.apiPrefix}/cloudinary`, cloudinaryRoutes);
+app.use(`${config.apiPrefix}/stories`, storyRoutes);
+app.use(`${config.apiPrefix}/music`, musicRoutes);
+app.use(`${config.apiPrefix}/audio`, audioRoutes);
 
 
 // 404 handler

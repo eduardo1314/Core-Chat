@@ -1,3 +1,4 @@
+
 export interface Config {
     port: number;
     nodeEnv: string;
@@ -6,8 +7,8 @@ export interface Config {
     apiPrefix: string;
     logLevel: string;
     logToFile: boolean;
+   
 }
-
 export interface ApiResponse<T = any> {
     success: boolean;
     message?: string;

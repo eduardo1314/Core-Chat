@@ -7,6 +7,7 @@ import config from './config';
 import logger from './utils/logger';
 import { connectDB } from './database/config';
 import { initSocket } from './socket';
+import { startScheduler } from './jobs/index';
 
 const PORT = config.port;
 const NODE_ENV = config.nodeEnv;
@@ -17,16 +18,31 @@ async function startServer() {
         logger.info(`📡 Modo: ${NODE_ENV}`);
         logger.info(`🔌 Puerto: ${PORT}`);
 
+        // ============================================
+        // CONECTAR A BASE DE DATOS
+        // ============================================
         await connectDB();
 
+        // ============================================
+        // INICIAR SCHEDULER (LIMPIEZA DE HISTORIAS)
+        // ============================================
+        startScheduler();
+        logger.info('✅ Scheduler iniciado');
+
+        // ============================================
+        // CREAR SERVIDOR HTTP
+        // ============================================
         const httpServer = createServer(app);
 
-        // Inicializar Socket.IO 
+        // ============================================
+        // INICIALIZAR SOCKET.IO
+        // ============================================
         const io = initSocket(httpServer);
-
-        //  Guardar io en app para controladores para poder usar enpoints normales http
         app.set('io', io);
 
+        // ============================================
+        // INICIAR SERVIDOR
+        // ============================================
         httpServer.listen(PORT, () => {
             logger.info(`🚀 Servidor corriendo en ${config.appUrl}`);
             logger.info(`📚 API disponible en: ${config.appUrl}${config.apiPrefix}`);
@@ -34,12 +50,16 @@ async function startServer() {
             logger.info('========================================');
         });
 
-        // Graceful Shutdown
+        // ============================================
+        // GRACEFUL SHUTDOWN
+        // ============================================
         const gracefulShutdown = () => {
             logger.info('⚠️ Cerrando servidor...');
+            
             io.sockets.sockets.forEach((socket) => {
                 socket.disconnect(true);
             });
+            
             io.close(() => {
                 httpServer.close(async () => {
                     try {
@@ -53,12 +73,16 @@ async function startServer() {
                     }
                 });
             });
+
             setTimeout(() => {
                 logger.error('❌ Forzando cierre del servidor');
                 process.exit(1);
             }, 5000);
         };
 
+        // ============================================
+        // MANEJAR SEÑALES DEL SISTEMA
+        // ============================================
         process.on('SIGTERM', gracefulShutdown);
         process.on('SIGINT', gracefulShutdown);
         process.on('uncaughtException', (error) => {

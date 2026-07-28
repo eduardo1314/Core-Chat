@@ -211,6 +211,24 @@ export interface SendMessageData {
     metadata?: any;
 }
 
+// ============================================
+// TIPOS DE MÚSICA
+// ============================================
+export interface Music {
+    id: string;
+    title: string;
+    artist: string;
+    album: string;
+    album_art: string;
+    duration: number;
+    preview_url: string | null;
+    spotify_url: string;
+    full_audio_url?: string | null;
+    youtube_id?: string | null;
+    is_full?: boolean;
+}
+
+
 
 // ====================
 // Tipos de usuarios
@@ -243,3 +261,62 @@ export interface UserStatus {
 }
 
 
+// ============================================
+// TIPO PARA HISTORIAS AGRUPADAS POR USUARIO
+// ============================================
+export interface UserStories {
+    userId: string;
+    username: string;
+    avatar: string;
+    stories: Story[];
+    viewed: boolean;
+    lastUpdated: string;
+}
+
+// ============================================
+// TIPO PARA CREAR HISTORIA
+// ============================================
+export interface CreateStoryData {
+    content?: string;
+    location?: string;
+    music?: string;
+    music_artist?: string;
+    music_duration?: number | null;
+    music_preview_url?: string | null;
+    backgroundColor?: string;
+    fontColor?: string;
+    fontSize?: string;
+    textPosition?: { x: number; y: number };
+    textScale?: number;
+}
+
+//===========================
+// Tipos de historias
+//===========================
+export interface Story {
+    id: string;
+    userId: string;
+    username: string;
+    avatar: string;
+    image: string;
+    video?: string | null;
+    content?: string | null;
+    location?: string | null;
+    music?: string | null;
+    music_artist?: string | null;
+    music_duration?: number | null;
+    music_preview_url?: string | null;
+    backgroundColor?: string | null;      
+    fontColor?: string | null;            
+    fontSize?: string | null;            
+    textPosition?: { x: number; y: number } | null;  
+    textScale?: number | null;            
+    timestamp: string;
+    viewed: boolean;
+    likes: number;
+    hasLiked: boolean;
+    isOwn: boolean;
+    expiresAt: string;
+    viewsCount: number;
+    duration?: number | null;
+}

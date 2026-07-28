@@ -5,6 +5,7 @@ import Message from './Message';
 import Participant from './Participant';
 import Friend from './Friend';
 import UnreadCount from "./UnreadCount";
+import Story from './Story';
 
 // ============================================
 // RELACIONES EXISTENTES
@@ -23,6 +24,18 @@ Participant.belongsTo(User, { foreignKey: 'user_id' });
 
 User.hasMany(Friend, { foreignKey: 'user_id' });
 Friend.belongsTo(User, { foreignKey: 'user_id' });
+
+// ============================================
+// RELACIONES DE STORIES
+// ============================================
+User.hasMany(Story, { 
+    foreignKey: 'user_id',
+    as: 'stories' 
+});
+Story.belongsTo(User, { 
+    foreignKey: 'user_id',
+    as: 'user' 
+});
 
 // ============================================
 // PARA UNREADCOUNT
@@ -49,5 +62,6 @@ export {
     Message, 
     Participant, 
     Friend,
-    UnreadCount 
+    UnreadCount,
+    Story 
 };

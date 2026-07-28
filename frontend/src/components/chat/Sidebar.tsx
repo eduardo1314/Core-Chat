@@ -10,7 +10,7 @@ import { formatLastSeen } from '../../../utils/formatLastSeen';
 import { Chat } from "../../types";
 import { useSocket } from '../../hooks/useSocket';
 import ChatItem from './ChatItem';
-import Stories from './stories';
+import Stories from './Stories';
 
 // ============================================
 // TIPOS E INTERFACES
@@ -913,9 +913,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onSelectChat, selectedChatId }) => {
                             }}
                             onSendMessage={(storyId: any) => {
                                 console.log('💬 Mensaje en historia:', storyId);
-                            }}
-                            onAddStory={() => {
-                                console.log('➕ Agregar nueva historia');
                             }}
                         />
                     </div>
