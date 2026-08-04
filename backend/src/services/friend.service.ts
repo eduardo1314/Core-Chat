@@ -45,6 +45,11 @@ export class FriendService {
         
         if (existingRequest) {
             if (existingRequest.status === 'pending') {
+                //  Si la solicitud es de friendId → userId, aceptarla automáticamente
+                if (existingRequest.user_id === friendId && existingRequest.friend_id === userId) {
+                    console.log(`🔄 Aceptando solicitud pendiente de ${friendId} → ${userId}`);
+                    return this.acceptFriendRequest(userId, existingRequest.id);
+                }
                 throw new Error('Ya existe una solicitud pendiente');
             }
             if (existingRequest.status === 'accepted') {
@@ -67,7 +72,7 @@ export class FriendService {
     }
     
     // ============================================
-    // ACEPTAR SOLICITUD DE AMISTAD
+    // ACEPTAR SOLICITUD DE AMISTAD - CORREGIDO
     // ============================================
     async acceptFriendRequest(userId: string, requestId: string): Promise<FriendResponse> {
         const friendRequest = await Friend.findOne({
@@ -82,7 +87,28 @@ export class FriendService {
             throw new Error('Solicitud no encontrada');
         }
         
+        //  Actualizar la solicitud existente
         await friendRequest.update({ status: 'accepted' });
+        
+        //  CREAR LA AMISTAD EN LA DIRECCIÓN INVERSA
+        const inverseExists = await Friend.findOne({
+            where: {
+                user_id: friendRequest.friend_id,
+                friend_id: friendRequest.user_id,
+                status: 'accepted'
+            }
+        });
+        
+        if (!inverseExists) {
+            await Friend.create({
+                id: uuidv4(),
+                user_id: friendRequest.friend_id,
+                friend_id: friendRequest.user_id,
+                action_user_id: userId,
+                status: 'accepted'
+            });
+            console.log(`✅ Amistad inversa creada: ${friendRequest.friend_id} → ${friendRequest.user_id}`);
+        }
         
         return this.formatFriendResponse(friendRequest, userId);
     }

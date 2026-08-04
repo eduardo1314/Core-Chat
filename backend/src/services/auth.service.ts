@@ -44,6 +44,12 @@ export class AuthService {
             { replacements: { id, username, email, password_hash } }
         );
 
+        //  Obtener el usuario recién creado con avatar_url
+        const [newUser]: any = await sequelize.query(
+            'SELECT id, username, email, status, avatar_url, last_seen, created_at FROM users WHERE id = :id',
+            { replacements: { id }, type: 'SELECT' }
+        );
+
         // Generar token
         const token = jwt.sign(
             { id, email, username },
@@ -52,7 +58,7 @@ export class AuthService {
         );
 
         return {
-            user: { id, username, email },
+            user: newUser,
             token
         };
     }
@@ -82,6 +88,12 @@ export class AuthService {
             { replacements: { id: user.id } }
         );
 
+        //  Obtener el usuario completo con avatar_url
+        const [fullUser]: any = await sequelize.query(
+            'SELECT id, username, email, status, avatar_url, last_seen, created_at FROM users WHERE id = :id',
+            { replacements: { id: user.id }, type: 'SELECT' }
+        );
+
         // Generar token
         const token = jwt.sign(
             { id: user.id, email: user.email, username: user.username },
@@ -90,11 +102,7 @@ export class AuthService {
         );
 
         return {
-            user: {
-                id: user.id,
-                username: user.username,
-                email: user.email
-            },
+            user: fullUser,
             token
         };
     }
