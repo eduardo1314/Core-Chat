@@ -4,6 +4,24 @@ import { validate } from 'class-validator';
 import { RegisterDTO, LoginDTO } from '../dtos/auth.dto';
 import { authService } from '../services/auth.service';
 
+import { CookieOptions } from 'express';
+
+const isProduction = process.env.NODE_ENV === 'production';
+const sameSite: 'none' | 'lax' = isProduction ? 'none' : 'lax';
+
+const cookieOptions: CookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite,
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
+};
+
+const clearCookieOptions: CookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite,
+};
+
 export const register = async (req: Request, res: Response) => {
     try {
         const dto = plainToClass(RegisterDTO, req.body);
@@ -25,12 +43,7 @@ export const register = async (req: Request, res: Response) => {
         const { user, token } = await authService.register(dto);
         
         // Enviar token como cookie HttpOnly
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 días
-        });
+        res.cookie('token', token, cookieOptions);
 
         res.status(201).json({ success: true, data: { user } });
     } catch (error: any) {
@@ -61,12 +74,7 @@ export const login = async (req: Request, res: Response) => {
         const { user, token } = await authService.login(dto);
         
         // Enviar token como cookie HttpOnly
-        res.cookie('token', token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 días
-        });
+        res.cookie('token', token, cookieOptions);
 
         res.json({ success: true, data: { user } });
     } catch (error: any) {
@@ -97,10 +105,6 @@ export const getMe = async (req: Request, res: Response) => {
 };
 
 export const logout = async (req: Request, res: Response) => {
-    res.clearCookie('token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict'
-    });
+    res.clearCookie('token', clearCookieOptions);
     res.json({ success: true, message: 'Logout exitoso' });
 };

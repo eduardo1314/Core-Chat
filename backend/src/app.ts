@@ -16,13 +16,25 @@ import cookieParser from 'cookie-parser';
 const app: Express = express();
 
 // CORS configuration
+const allowedOrigins = new Set<string>([
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://angelfish-sliding-curtain.ngrok-free.dev',
+  'https://core-chat-five.vercel.app',
+  config.frontendUrl,
+]);
+
+if (config.corsOrigin) {
+  allowedOrigins.add(config.corsOrigin);
+}
+
 const corsOptions = {
-  origin: [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "https://angelfish-sliding-curtain.ngrok-free.dev",
-    "https://core-chat-five.vercel.app"
-  ],
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin || allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   optionsSuccessStatus: 200,
 };
