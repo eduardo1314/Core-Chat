@@ -21,7 +21,7 @@ const corsOptions = {
     "http://localhost:3000",
     "http://localhost:5173",
     "https://angelfish-sliding-curtain.ngrok-free.dev",
-    "http://172.28.11.165:5173"
+    "https://core-chat-five.vercel.app"
   ],
   credentials: true,
   optionsSuccessStatus: 200,

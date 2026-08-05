@@ -20,7 +20,7 @@ export const processedMessages = new Map<string, number>();
 export const initSocket = (httpServer: HttpServer) => {
     const io = new Server(httpServer, {
         cors: {
-            origin: [config.frontendUrl, 'http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', "https://angelfish-sliding-curtain.ngrok-free.dev", "http://172.28.11.165:5173"],
+            origin: [config.frontendUrl, 'http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', "https://angelfish-sliding-curtain.ngrok-free.dev", "https://core-chat-five.vercel.app"],
             credentials: true,
             methods: ["GET", "POST"]
         },
