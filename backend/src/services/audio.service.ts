@@ -14,7 +14,7 @@ export const getAudioDuration = async (previewUrl: string): Promise<number> => {
     let tempFile: string | null = null;
     
     try {
-        const audioResponse = await axios.get(previewUrl, {
+        const audioResponse = await axios.get<ArrayBuffer>(previewUrl, {
             responseType: 'arraybuffer',
             timeout: 30000,
         });
@@ -25,7 +25,7 @@ export const getAudioDuration = async (previewUrl: string): Promise<number> => {
         }
 
         tempFile = path.join(tempDir, `${uuidv4()}.mp3`);
-        fs.writeFileSync(tempFile, audioResponse.data);
+        fs.writeFileSync(tempFile, Buffer.from(audioResponse.data));
 
         return new Promise((resolve) => {
             if (!tempFile) {

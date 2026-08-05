@@ -62,12 +62,12 @@ export class StoryController {
             let savedMusicPreviewUrl = null;
             if (music_preview_url && music_preview_url !== 'null' && music_preview_url !== 'undefined' && music_preview_url.trim() !== '') {
                 try {
-                    const audioResponse = await axios.get(music_preview_url, {
+                    const audioResponse = await axios.get<ArrayBuffer>(music_preview_url, {
                         responseType: 'arraybuffer',
                         timeout: 30000,
                     });
                     
-                    if (audioResponse.data.length > 0) {
+                    if (audioResponse.data.byteLength > 0) {
                         savedMusicPreviewUrl = await uploadAudioToCloudinary(
                             Buffer.from(audioResponse.data),
                             userId

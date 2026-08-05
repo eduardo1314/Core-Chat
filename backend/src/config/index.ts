@@ -12,6 +12,7 @@ export const config: Config = {
     apiPrefix: process.env.API_PREFIX || '/api/v1',
     logLevel: process.env.LOG_LEVEL || 'info',
     logToFile: process.env.LOG_TO_FILE === 'true',
+    corsOrigin: process.env.CORS_ORIGIN
     
    
 

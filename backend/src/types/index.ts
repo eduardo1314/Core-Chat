@@ -7,6 +7,7 @@ export interface Config {
     apiPrefix: string;
     logLevel: string;
     logToFile: boolean;
+    corsOrigin?: string;
    
 }
 export interface ApiResponse<T = any> {

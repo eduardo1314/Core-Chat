@@ -17,9 +17,11 @@ const app: Express = express();
 
 // CORS configuration
 const corsOptions = {
-  origin: process.env.CORS_ORIGIN?.split(",") || [
+  origin: [
     "http://localhost:3000",
     "http://localhost:5173",
+    "https://angelfish-sliding-curtain.ngrok-free.dev",
+    "http://172.28.11.165:5173"
   ],
   credentials: true,
   optionsSuccessStatus: 200,

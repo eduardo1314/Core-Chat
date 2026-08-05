@@ -3,6 +3,10 @@ import axios from 'axios';
 // ============================================
 // INTERFACES
 // ============================================
+interface DeezerApiResponse {
+    data: Array<any>;
+}
+
 export interface DeezerTrack {
     id: string;
     title: string;
@@ -21,7 +25,7 @@ export const searchDeezerTracks = async (
     limit: number = 20
 ): Promise<DeezerTrack[]> => {
     try {
-        const response = await axios.get('https://api.deezer.com/search', {
+        const response = await axios.get<DeezerApiResponse>('https://api.deezer.com/search', {
             params: { q: query, limit }
         });
 
@@ -45,7 +49,7 @@ export const searchDeezerTracks = async (
 // ============================================
 export const getDeezerPopularTracks = async (limit: number = 50): Promise<DeezerTrack[]> => {
     try {
-        const response = await axios.get('https://api.deezer.com/chart/0/tracks', {
+        const response = await axios.get<DeezerApiResponse>('https://api.deezer.com/chart/0/tracks', {
             params: { limit }
         });
 
