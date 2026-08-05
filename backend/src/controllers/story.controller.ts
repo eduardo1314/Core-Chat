@@ -425,4 +425,68 @@ export class StoryController {
             });
         }
     };
+    // ============================================
+    // 7. OBTENER QUIENES VIERON UNA HISTORIA
+    // ============================================
+    getStoryViewers = async (req: AuthRequest, res: Response) => {
+    try {
+        const { storyId } = req.params;
+        
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                error: 'Usuario no autenticado',
+            });
+        }
+
+        const userId = req.user.id;
+        const result = await storyService.getStoryViewers(storyId, userId);
+
+        res.json({
+            success: true,
+            data: result,
+        });
+
+    } catch (error: any) {
+        console.error('❌ Error al obtener viewers:', error);
+        logger.error('Error al obtener viewers:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Error al obtener viewers',
+        });
+    }
+};
+
+// ============================================
+// 8. OBTENER QUIENES DIERON LIKE A UNA HISTORIA
+// ============================================
+getStoryLikers = async (req: AuthRequest, res: Response) => {
+    try {
+        const { storyId } = req.params;
+        
+        if (!req.user?.id) {
+            return res.status(401).json({
+                success: false,
+                error: 'Usuario no autenticado',
+            });
+        }
+
+        const userId = req.user.id;
+        const result = await storyService.getStoryLikers(storyId, userId);
+
+        res.json({
+            success: true,
+            data: result,
+        });
+
+    } catch (error: any) {
+        console.error('❌ Error al obtener likers:', error);
+        logger.error('Error al obtener likers:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Error al obtener likers',
+        });
+    }
+};
+ 
 }

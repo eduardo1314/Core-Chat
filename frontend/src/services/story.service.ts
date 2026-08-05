@@ -1,5 +1,5 @@
 import api from './api';
-import { Story, CreateStoryData  } from '../types';
+import { Story, CreateStoryData, User  } from '../types';
 
 
 // ============================================
@@ -99,4 +99,35 @@ export const deleteStory = async (storyId: string): Promise<void> => {
     if (!response.data.success) {
         throw new Error(response.data.error || 'Error al eliminar historia');
     }
+};
+
+
+// ============================================
+// 7. OBTENER QUIENES VIERON UNA HISTORIA
+// ============================================
+export const getStoryViewers = async (storyId: string): Promise<{
+    viewers: User[];
+    total: number;
+    viewsCount: number;
+}> => {
+    const response = await api.get(`/stories/${storyId}/viewers`);
+    if (response.data.success) {
+        return response.data.data;
+    }
+    throw new Error(response.data.error || 'Error al obtener viewers');
+};
+
+// ============================================
+// 8. OBTENER QUIENES DIERON LIKE A UNA HISTORIA
+// ============================================
+export const getStoryLikers = async (storyId: string): Promise<{
+    likers: User[];
+    total: number;
+    likesCount: number;
+}> => {
+    const response = await api.get(`/stories/${storyId}/likers`);
+    if (response.data.success) {
+        return response.data.data;
+    }
+    throw new Error(response.data.error || 'Error al obtener likers');
 };

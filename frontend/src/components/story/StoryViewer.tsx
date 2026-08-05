@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight, Heart, Send, Pause, Music, Volume2, VolumeX, Trash2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Heart, Send, Pause, Music, Volume2, VolumeX, Trash2, BarChart3 } from 'lucide-react';
 import type { Story } from '../../types';
 import { useAuth } from '../../hooks/useAuth';
+import StoryStats from './StoryStats';
 
 // ============================================
 // TIPOS
@@ -57,6 +58,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
     const [musicDuration, setMusicDuration] = useState<number | null>(null);
     const [storyDuration, setStoryDuration] = useState<number>(5000);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [showStats, setShowStats] = useState(false);
 
     // ============================================
     // REFERENCIAS
@@ -305,6 +307,22 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
         }
     };
 
+    /**
+     * Abre estadísticas y pausa la historia
+     */
+    const handleOpenStats = () => {
+        setShowStats(true);
+        setIsPaused(true);
+    };
+
+    /**
+     * Cierra estadísticas y reanuda la historia
+     */
+    const handleCloseStats = () => {
+        setShowStats(false);
+        setIsPaused(false);
+    };
+
     // ============================================
     // AUTO-OCULTAR CONTROLES
     // ============================================
@@ -529,6 +547,20 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
                                 </button>
                             )}
 
+                            {/* Botón de estadísticas - SOLO visible para el propietario */}
+                            {isOwner && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenStats();
+                                    }}
+                                    className="text-white/60 hover:text-white transition p-2 rounded-full hover:bg-white/10"
+                                    title="Ver estadísticas"
+                                >
+                                    <BarChart3 className="w-4 h-4" />
+                                </button>
+                            )}
+
                             {/* Botón de eliminar - SOLO visible para el propietario */}
                             {isOwner && (
                                 <button
@@ -697,7 +729,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
                 {/* ============================================
                     INDICADOR DE PAUSA
                     ============================================ */}
-                {isPaused && (
+                {isPaused && !showStats && (
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
                         <div className="bg-black/50 backdrop-blur-md rounded-full p-6 border border-white/10 shadow-2xl">
                             <Pause className="w-12 h-12 text-white" />
@@ -738,6 +770,18 @@ const StoryViewer: React.FC<StoryViewerProps> = ({
                                 </button>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {/* ============================================
+                    STORY STATS MODAL - CON PAUSA AUTOMÁTICA
+                    ============================================ */}
+                {showStats && (
+                    <div className="absolute inset-0 z-40">
+                        <StoryStats
+                            storyId={currentStory?.id}
+                            onClose={handleCloseStats}
+                        />
                     </div>
                 )}
 

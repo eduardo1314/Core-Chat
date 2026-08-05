@@ -320,3 +320,16 @@ export interface Story {
     viewsCount: number;
     duration?: number | null;
 }
+
+// ============================================
+// TIPO PARA USUARIOS
+// ============================================
+export interface User {
+    id: string;
+    username: string;
+    email: string;
+    avatar_url?: string | null;
+    status?: string;
+    last_seen?: Date | null;
+    online?: boolean;
+}

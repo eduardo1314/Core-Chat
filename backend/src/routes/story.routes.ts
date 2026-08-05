@@ -25,4 +25,11 @@ router.post('/:storyId/like', storyController.toggleLike);
 // Eliminar historia
 router.delete('/:storyId', storyController.deleteStory);
 
+
+// Obtener quienes vieron una historia
+router.get('/:storyId/viewers', storyController.getStoryViewers);
+
+// Obtener quienes dieron like a una historia
+router.get('/:storyId/likers', storyController.getStoryLikers);
+
 export default router;

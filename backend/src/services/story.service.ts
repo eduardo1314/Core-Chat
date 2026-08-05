@@ -35,13 +35,11 @@ export class StoryService {
             music_preview_url: data.music_preview_url ? '✅ Presente' : '❌ No presente',
         });
 
-        // Convertir textPosition a string si existe
         let textPositionString = null;
         if (data.textPosition) {
             textPositionString = JSON.stringify(data.textPosition);
         }
 
-        // SOLO GUARDA EN BD - NO PROCESA AUDIO
         const story = await Story.create({
             user_id: data.userId,
             image_url: data.imageUrl,
@@ -85,7 +83,6 @@ export class StoryService {
     // ============================================
     async getFriendsStories(userId: string) {
         try {
-            // Obtener amigos aceptados
             const friends = await Friend.findAll({
                 where: {
                     user_id: userId,
@@ -97,7 +94,6 @@ export class StoryService {
             const friendIds = friends.map(f => f.friend_id);
             friendIds.push(userId);
 
-            // Obtener historias activas
             const stories = await Story.findAll({
                 where: {
                     user_id: {
@@ -118,9 +114,7 @@ export class StoryService {
                 order: [['created_at', 'DESC']],
             }) as Array<Story & { user?: User }>;
 
-            // Formatear para el frontend con TODOS los campos
             return stories.map(story => {
-                // Parsear text_position si existe
                 let textPosition = null;
                 if (story.text_position) {
                     try {
@@ -129,7 +123,7 @@ export class StoryService {
                         textPosition = null;
                     }
                 }
-                    // Formatear la historia para el frontend
+
                 return {
                     id: story.id,
                     userId: story.user_id,
@@ -200,7 +194,7 @@ export class StoryService {
                     textPosition = null;
                 }
             }
-                // Formatear la historia para los nombres snake_case que el frontend espera   
+
             return {
                 id: story.id,
                 userId: story.user_id,
@@ -258,7 +252,7 @@ export class StoryService {
                         textPosition = null;
                     }
                 }
-                // Formatear la historia para el frontend con TODOS los campos
+
                 return {
                     id: story.id,
                     image: story.image_url,
@@ -382,6 +376,78 @@ export class StoryService {
         } catch (error) {
             logger.error('❌ Error al verificar existencia de historia:', error);
             return false;
+        }
+    }
+
+    // ============================================
+    // 9. OBTENER QUIENES VIERON UNA HISTORIA 
+    // ============================================
+    async getStoryViewers(storyId: string, userId: string) {
+        try {
+            const story = await Story.findByPk(storyId);
+
+            if (!story) {
+                throw new Error('Historia no encontrada');
+            }
+
+            if (story.user_id !== userId) {
+                throw new Error('No tienes permiso para ver esta información');
+            }
+
+            const viewers = await User.findAll({
+                where: {
+                    id: {
+                        [Op.in]: story.viewed_by || []
+                    }
+                },
+                attributes: ['id', 'username', 'avatar_url', 'status'],
+                order: [['username', 'ASC']],
+            });
+
+            return {
+                viewers,
+                total: viewers.length,
+                viewsCount: story.views_count || 0,
+            };
+        } catch (error) {
+            logger.error('❌ Error al obtener viewers:', error);
+            throw error;
+        }
+    }
+
+    // ============================================
+    // 10. OBTENER QUIENES DIERON LIKE A UNA HISTORIA 
+    // ============================================
+    async getStoryLikers(storyId: string, userId: string) {
+        try {
+            const story = await Story.findByPk(storyId);
+
+            if (!story) {
+                throw new Error('Historia no encontrada');
+            }
+
+            if (story.user_id !== userId) {
+                throw new Error('No tienes permiso para ver esta información');
+            }
+
+            const likers = await User.findAll({
+                where: {
+                    id: {
+                        [Op.in]: story.likes || []
+                    }
+                },
+                attributes: ['id', 'username', 'avatar_url', 'status'],
+                order: [['username', 'ASC']],
+            });
+
+            return {
+                likers,
+                total: likers.length,
+                likesCount: story.likes_count || 0,
+            };
+        } catch (error) {
+            logger.error('❌ Error al obtener likers:', error);
+            throw error;
         }
     }
 }
